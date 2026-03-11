@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { AfterViewInit, Component, OnInit } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -10,7 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { finalize } from 'rxjs';
+import { distinctUntilChanged, finalize } from 'rxjs';
 import { RoomDto, RoomScheduleDto, RoomsApiService } from './services/rooms-api.service';
 
 @Component({
@@ -30,7 +30,7 @@ import { RoomDto, RoomScheduleDto, RoomsApiService } from './services/rooms-api.
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
-export class App implements OnInit {
+export class App implements OnInit, AfterViewInit {
   readonly localidades = ['WTorre', 'Allianz'];
   readonly filterForm;
   readonly bookingForm;
@@ -57,11 +57,15 @@ export class App implements OnInit {
   }
 
   ngOnInit(): void {
-    this.loadRoomsAndAvailability();
-    this.filterForm.controls.localidade.valueChanges.subscribe((localidade) => {
+    this.filterForm.controls.localidade.valueChanges.pipe(distinctUntilChanged()).subscribe((localidade) => {
       localStorage.setItem('localidade', localidade);
       this.loadRoomsAndAvailability();
     });
+  }
+
+  ngAfterViewInit(): void {
+    // Evita ExpressionChanged no primeiro ciclo de renderizacao.
+    queueMicrotask(() => this.loadRoomsAndAvailability());
   }
 
   refreshAvailability(): void {
@@ -131,7 +135,11 @@ export class App implements OnInit {
         next: (response) => {
           this.rooms = response.rooms;
           if (!this.bookingForm.controls.roomEmail.value && this.rooms[0]) {
-            this.bookingForm.controls.roomEmail.setValue(this.rooms[0].email);
+            queueMicrotask(() =>
+              this.bookingForm.controls.roomEmail.setValue(this.rooms[0]!.email, {
+                emitEvent: false,
+              }),
+            );
           }
           this.refreshAvailability();
         },

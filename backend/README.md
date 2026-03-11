@@ -16,11 +16,12 @@ npm run build
 npm start
 ```
 
-## Seed de tenants
+## Configuracao de tenants via ambiente
 
-```bash
-npm run db:seed
-```
+Configure os tenants diretamente no `.env`:
+
+- `WTORRE_TENANT_ID`, `WTORRE_CLIENT_ID`, `WTORRE_CLIENT_SECRET`
+- `ALLIANZ_TENANT_ID`, `ALLIANZ_CLIENT_ID`, `ALLIANZ_CLIENT_SECRET`
 
 ## Rotas
 

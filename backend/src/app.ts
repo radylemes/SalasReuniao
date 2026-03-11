@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { PostgresTenantRepository } from "./infrastructure/repositories/PostgresTenantRepository";
+import { EnvTenantRepository } from "./infrastructure/repositories/EnvTenantRepository";
 import { MsalTokenService } from "./infrastructure/auth/MsalTokenService";
 import { GraphClientFactory } from "./infrastructure/graph/GraphClientFactory";
 import { MicrosoftGraphRoomsGateway } from "./infrastructure/graph/MicrosoftGraphRoomsGateway";
@@ -17,7 +17,7 @@ dotenv.config();
 
 export function createApp() {
   const app = express();
-  const tenantRepository = new PostgresTenantRepository();
+  const tenantRepository = new EnvTenantRepository();
   const tokenService = new MsalTokenService();
   const graphFactory = new GraphClientFactory(tokenService);
   const graphGateway = new MicrosoftGraphRoomsGateway(graphFactory);

@@ -10,17 +10,14 @@ Boilerplate inicial com backend `Node.js + Express + TypeScript` e frontend `Ang
 ## Pre-requisitos
 
 - Node.js 20+
-- PostgreSQL 14+
 - Aplicacoes Azure AD com permissoes para Microsoft Graph (app-only)
 
 ## Setup rapido
 
 1. Copie `.env.example` para `.env` na raiz e ajuste os valores.
-2. Crie banco PostgreSQL e execute:
-   - `backend/src/infrastructure/db/schema.sql`
-3. Rode seed de tenants:
-   - `cd backend`
-   - `npm run db:seed`
+2. Configure os tenants via variaveis de ambiente:
+   - `WTORRE_TENANT_ID`, `WTORRE_CLIENT_ID`, `WTORRE_CLIENT_SECRET`
+   - `ALLIANZ_TENANT_ID`, `ALLIANZ_CLIENT_ID`, `ALLIANZ_CLIENT_SECRET`
 
 ## Backend
 
@@ -72,5 +69,5 @@ Interface em `http://localhost:4200`.
 
 ## Scripts principais
 
-- Backend: `dev`, `build`, `start`, `db:seed`
+- Backend: `dev`, `build`, `start`
 - Frontend: `start`, `build`

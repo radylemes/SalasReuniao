@@ -15,7 +15,7 @@ export interface RoomScheduleDto {
 
 @Injectable({ providedIn: 'root' })
 export class RoomsApiService {
-  private readonly baseUrl = 'http://localhost:3000/api';
+  private readonly baseUrl = '/api';
 
   constructor(private readonly http: HttpClient) {}
 

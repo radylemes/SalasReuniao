@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
-    "db:seed": "tsx src/infrastructure/db/seed-tenants.ts"
+    "start": "node dist/main.js"
   },
   "keywords": [],
   "author": "",
@@ -20,14 +19,12 @@
     "cross-fetch": "^4.1.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "pg": "^8.20.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.4.0",
-    "@types/pg": "^8.18.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

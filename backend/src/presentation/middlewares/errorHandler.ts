@@ -1,8 +1,15 @@
 import { NextFunction, Request, Response } from "express";
 import { AppError } from "../../application/errors/AppError";
 
+function normalizeStatusCode(value: unknown, fallback = 500): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  if (parsed < 100 || parsed > 999) return fallback;
+  return parsed;
+}
+
 function mapGraphError(error: any) {
-  const statusCode = error?.statusCode ?? error?.status ?? 500;
+  const statusCode = normalizeStatusCode(error?.statusCode ?? error?.status, 500);
   const code = error?.code ?? error?.body?.error?.code ?? "INTERNAL_ERROR";
   const details = error?.body ?? error?.message ?? error;
 
@@ -36,7 +43,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   const correlationId = req.correlationId ?? "n/a";
 
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({
+    const statusCode = normalizeStatusCode(err.statusCode, 400);
+    return res.status(statusCode).json({
       code: err.code,
       message: err.message,
       details: err.details ?? null,
