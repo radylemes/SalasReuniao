@@ -1,0 +1,107 @@
+<h2 mat-dialog-title>Agendar sala</h2>
+
+<mat-dialog-content>
+  <form [formGroup]="form" class="booking-form">
+    <mat-form-field appearance="outline">
+      <mat-label>Sala</mat-label>
+      <mat-select formControlName="roomEmail">
+        @for (room of data.rooms; track room.email) {
+          <mat-option [value]="room.email">{{ room.name }} ({{ room.email }})</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Titulo</mat-label>
+      <input matInput formControlName="title" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Solicitante (email)</mat-label>
+      <input matInput formControlName="requesterEmail" placeholder="nome@empresa.com" />
+    </mat-form-field>
+
+    <div class="row">
+      <mat-form-field appearance="outline">
+        <mat-label>Inicio (ISO)</mat-label>
+        <input matInput formControlName="start" placeholder="2026-03-11T14:00:00Z" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Fim (ISO)</mat-label>
+        <input matInput formControlName="end" placeholder="2026-03-11T15:00:00Z" />
+      </mat-form-field>
+    </div>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Adicionar participantes</mat-label>
+      <input
+        matInput
+        [formControl]="participantQueryControl"
+        [matAutocomplete]="participantsAuto"
+        placeholder="Digite nome ou email"
+      />
+      <mat-autocomplete #participantsAuto="matAutocomplete" (optionSelected)="onParticipantSelected($event)">
+        @for (user of participantOptions; track user.email) {
+          <mat-option [value]="user">{{ user.name }} ({{ user.email }})</mat-option>
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+
+    <mat-chip-set aria-label="Participantes selecionados">
+      @for (participant of selectedParticipants; track participant.email) {
+        <mat-chip-row (removed)="removeParticipant(participant.email)">
+          {{ participant.name }} ({{ participant.email }})
+          <button matChipRemove type="button" aria-label="Remover participante">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </mat-chip-row>
+      }
+    </mat-chip-set>
+  </form>
+
+  <section class="preview">
+    <div class="preview-header">
+      <h3>Previa de disponibilidade</h3>
+      <button mat-stroked-button type="button" (click)="fetchPreview()" [disabled]="!canPreview || previewLoading">
+        Atualizar previa
+      </button>
+    </div>
+
+    @if (previewLoading) {
+      <div class="loading-preview">
+        <mat-spinner diameter="28"></mat-spinner>
+      </div>
+    } @else if (previewError) {
+      <p class="error">{{ previewError }}</p>
+    } @else if (preview) {
+      <div class="preview-item" [class.busy]="!preview.room.isAvailable">
+        <strong>Sala ({{ preview.room.email }})</strong>
+        <span>{{ preview.room.isAvailable ? 'Livre' : 'Ocupada' }}</span>
+      </div>
+
+      @for (participant of preview.participants; track participant.email) {
+        <div class="preview-item" [class.busy]="!participant.isAvailable">
+          <strong>{{ participant.email }}</strong>
+          <span>{{ participant.isAvailable ? 'Livre' : 'Ocupado' }}</span>
+        </div>
+      }
+
+      @if (preview.room.conflicts.length > 0) {
+        <p class="conflict-title">Conflitos da sala</p>
+        @for (conflict of preview.room.conflicts; track conflict.start + conflict.end + conflict.status) {
+          <p class="conflict-item">
+            {{ conflict.start }} - {{ conflict.end }} | {{ conflict.subject || '(Sem titulo)' }} | {{ conflict.status }}
+          </p>
+        }
+      }
+    } @else {
+      <p class="hint">Informe sala e intervalo para consultar disponibilidade.</p>
+    }
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" mat-dialog-close>Cancelar</button>
+  <button mat-flat-button color="primary" type="button" (click)="submit()">Confirmar reserva</button>
+</mat-dialog-actions>

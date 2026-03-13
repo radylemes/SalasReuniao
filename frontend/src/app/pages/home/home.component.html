@@ -1,0 +1,112 @@
+<div class="page">
+  <app-header
+    [activeTab]="activeTab"
+    (tabChange)="onTabChange($event)"
+    (refresh)="onRefresh()"
+  ></app-header>
+
+  <main class="container content">
+    <div class="headline top-row">
+      @if (activeTab === 'allianzparque' || activeTab === 'wtorre' || activeTab === 'novoanhangabau') {
+        <div class="locality-logo">
+          @if (activeTab === 'allianzparque') {
+            <img src="assets/logos/allianz-parque.svg" alt="Allianz Parque" class="locality-logo-img" />
+          } @else if (activeTab === 'wtorre') {
+            <img src="assets/logos/wtorre.svg" alt="Wtorre" class="locality-logo-img" />
+          } @else if (activeTab === 'novoanhangabau') {
+            <img src="assets/logos/novo-anhangabau.svg" alt="Novo Anhangabau" class="locality-logo-img" />
+          }
+        </div>
+      } @else if (activeTab === 'reservas') {
+        <div class="reservas-title-block">
+          <h2 class="font-display reservas-title">Reservas</h2>
+          <p class="reservas-total">Total de {{ bookingsForCurrentTab.length }} reserva@if (bookingsForCurrentTab.length !== 1) {s}</p>
+        </div>
+      }
+      <div class="date-field">
+        <label for="selectedDate">Data</label>
+        <input id="selectedDate" type="date" class="form-input" [value]="selectedDate" (change)="onDateChange($any($event.target).value)" />
+      </div>
+    </div>
+
+    @if (errorMessage) {
+      <div class="alert error">{{ errorMessage }}</div>
+    }
+    @if (successMessage) {
+      <div class="alert success">{{ successMessage }}</div>
+    }
+
+    @if (activeTab === 'reservas') {
+      @if (isLoadingBookings) {
+        <p class="muted">Carregando reservas...</p>
+      } @else {
+        <app-bookings-list [bookings]="bookingsForCurrentTab" [hideHeader]="true"></app-bookings-list>
+      }
+    } @else if (activeTab === 'allianzparque' || activeTab === 'wtorre' || activeTab === 'novoanhangabau') {
+      @if (!selectedRoom) {
+        @if (isLoadingRooms || isLoadingBookings) {
+          <p class="muted">Carregando dados da API...</p>
+        }
+        @if (!isLoadingRooms && roomsForCurrentTab.length === 0) {
+          <p class="muted">Nenhuma sala encontrada para esta aba.</p>
+        }
+
+        <section class="rooms-grid">
+          @for (room of roomsForCurrentTab; track room.id) {
+            <app-room-card
+              [id]="room.id"
+              [name]="room.name"
+              [email]="room.email"
+              [capacity]="room.capacity"
+              [status]="room.status"
+              [occupancyPercent]="room.occupancyPercent"
+              (select)="onRoomSelect($event)"
+            ></app-room-card>
+          }
+        </section>
+
+        <app-bookings-list [bookings]="bookingsForCurrentTab"></app-bookings-list>
+      } @else {
+        <div class="main-layout">
+          <aside class="sidebar">
+            <app-room-details [room]="selectedRoom" (back)="onBackToRooms()"></app-room-details>
+            <div class="sidebar-legend">
+              <div class="sidebar-legend-item">
+                <span class="sidebar-legend-dot available"></span>
+                <span>Disponível</span>
+              </div>
+              <div class="sidebar-legend-item">
+                <span class="sidebar-legend-dot unavailable"></span>
+                <span>Indisponível</span>
+              </div>
+            </div>
+          </aside>
+          <div class="time-grid-section">
+            @if (isLoadingSlots) {
+              <p class="muted">Carregando disponibilidade da sala...</p>
+            } @else {
+              <app-timeline
+                [slots]="slots"
+                [selectedSlot]="selectedSlot"
+                (slotSelect)="onSlotSelect($event)"
+              ></app-timeline>
+            }
+          </div>
+        </div>
+      }
+    }
+  </main>
+
+  @if (showBookingForm && selectedRoom && selectedSlot) {
+    <app-booking-form
+      [localidade]="selectedRoom.location"
+      [roomName]="selectedRoom.name"
+      [roomEmail]="selectedRoom.email"
+      [roomCapacity]="selectedRoom.capacity"
+      [selectedSlot]="selectedSlot"
+      [slots]="slots"
+      (cancel)="onCloseBookingForm()"
+      (submitBooking)="onSubmitBooking($event)"
+    ></app-booking-form>
+  }
+</div>

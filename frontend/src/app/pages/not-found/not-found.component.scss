@@ -1,0 +1,50 @@
+.not-found {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #f8fafc, #eef2f7);
+  padding: 1rem;
+}
+
+.card {
+  width: min(520px, 100%);
+  text-align: center;
+  background: #fff;
+  border-radius: 0.9rem;
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 40px rgb(0 0 0 / 8%);
+  padding: 2rem 1.5rem;
+}
+
+.icon {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 9999px;
+  background: #fadbd8;
+  color: #c0392b;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 1rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2.6rem;
+}
+
+h2 {
+  margin: 0.5rem 0 0;
+  font-size: 1.2rem;
+}
+
+p {
+  margin: 0.75rem 0 1.25rem;
+  color: var(--muted-foreground);
+}
+
+a {
+  text-decoration: none;
+  display: inline-block;
+}

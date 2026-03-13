@@ -1,0 +1,239 @@
+<div class="modal-backdrop" (click)="cancel.emit()">
+  <div class="modal-container" (click)="$event.stopPropagation()">
+    <header class="modal-header">
+      <div class="modal-header-content">
+        <h1 class="font-heading">Agendar Sala</h1>
+        <p>Preencha os detalhes da sua reunião</p>
+      </div>
+      <button type="button" class="close-btn" (click)="cancel.emit()" aria-label="Fechar">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="modal-content">
+      <div class="content-grid">
+        <!-- Coluna esquerda - Info da sala -->
+        <aside class="room-info">
+          <div class="room-info-label">Sala Selecionada</div>
+          <div class="room-info-section">
+            <div class="room-name">{{ roomName }}</div>
+            @if (roomCapacity != null && roomCapacity > 0) {
+              <div class="room-capacity">Capacidade: {{ roomCapacity }} pessoas</div>
+            }
+          </div>
+
+          @if (selectedSlot) {
+            <div class="info-divider">
+              <div class="info-item">
+                <i class="fa-solid fa-clock info-item-icon" aria-hidden="true"></i>
+                <span class="info-item-label">Horário Selecionado</span>
+              </div>
+              <div class="info-item-value">
+                {{ formatIsoTime(selectedSlot.startTime) }} - {{ formatIsoTime(selectedSlot.endTime) }}
+              </div>
+            </div>
+          }
+
+          <div class="info-divider">
+            <div class="info-item">
+              <i class="fa-solid fa-envelope info-item-icon" aria-hidden="true"></i>
+              <span class="info-item-label">Sala</span>
+            </div>
+            <div class="info-item-secondary">{{ roomEmail }}</div>
+          </div>
+
+          <div class="info-divider">
+            <div class="info-item">
+              <i class="fa-solid fa-circle-check info-item-icon" aria-hidden="true"></i>
+              <span class="info-item-label">Disponibilidade</span>
+            </div>
+            <span class="status-badge">Disponível</span>
+          </div>
+
+          @if (participants.length > 0 && availabilityPreview) {
+            <div class="info-divider participants-status-wrap">
+              <div class="info-item">
+                <i class="fa-solid fa-users info-item-icon" aria-hidden="true"></i>
+                <span class="info-item-label">Status dos Participantes</span>
+              </div>
+              <div class="participants-status">
+                <div class="status-item">
+                  <i class="fa-solid fa-check status-icon status-available" aria-hidden="true"></i>
+                  <span>{{ availableCount }} disponível{{ availableCount !== 1 ? 'eis' : '' }}</span>
+                </div>
+                @if (conflictCount > 0) {
+                  <div class="status-item">
+                    <i class="fa-solid fa-xmark status-icon status-conflict" aria-hidden="true"></i>
+                    <span>{{ conflictCount }} com conflito</span>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </aside>
+
+        <!-- Coluna direita - Formulário -->
+        <div class="form-section">
+          <form (ngSubmit)="submit()" autocomplete="off">
+            @if (errorSummary) {
+              <div class="error-message">
+                <i class="fa-solid fa-circle-exclamation error-icon" aria-hidden="true"></i>
+                <p class="error-text">{{ errorSummary }}</p>
+              </div>
+            }
+
+            <div class="form-group">
+              <label class="form-label" for="title">Título da Reunião *</label>
+              <input
+                id="title"
+                name="title"
+                type="text"
+                class="form-input"
+                [(ngModel)]="title"
+                (ngModelChange)="onFieldChange()"
+                placeholder="Ex: Reunião com Cliente"
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="form-group participant-search-wrap">
+              <label class="form-label" for="requesterEmail">E-mail do Solicitante *</label>
+              <p class="form-helper-text">Digite nome ou e-mail para buscar</p>
+              <input
+                id="requesterEmail"
+                name="requesterEmail"
+                type="text"
+                class="form-input"
+                [(ngModel)]="requesterEmail"
+                (input)="onRequesterInputChange($event)"
+                (ngModelChange)="onRequesterInputChange()"
+                (blur)="onRequesterInputBlur()"
+                placeholder="Digite nome ou e-mail para buscar"
+                autocomplete="off"
+                data-lpignore="true"
+                data-form-type="other"
+              />
+              @if (showRequesterDropdown && requesterSearchResults.length > 0) {
+                <ul class="participant-dropdown" role="listbox">
+                  @for (user of requesterSearchResults; track user.email) {
+                    <li
+                      class="participant-dropdown-item"
+                      role="option"
+                      (mousedown)="selectRequesterFromSearch(user); $event.preventDefault()"
+                    >
+                      <span class="dropdown-name">{{ user.name }}</span>
+                      <span class="dropdown-email">{{ user.email }}</span>
+                    </li>
+                  }
+                </ul>
+              }
+            </div>
+
+            <div class="time-grid">
+              <div class="form-group">
+                <label class="form-label" for="startTime">Início</label>
+                <input
+                  id="startTime"
+                  name="startTime"
+                  class="form-input"
+                  [value]="startTime ? formatIsoTime(startTime) : ''"
+                  readonly
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="endTime">Fim *</label>
+                <select id="endTime" name="endTime" class="form-input" [(ngModel)]="endTime" (ngModelChange)="onFieldChange()" autocomplete="off">
+                  @for (option of endTimeOptions; track option.value) {
+                    <option [value]="option.value">{{ option.label }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group participant-search-wrap">
+              <label class="form-label">Participantes (opcional)</label>
+              <p class="form-helper-text">Digite para buscar ou informe o e-mail e adicione</p>
+              <div class="participants-input-group">
+                <input
+                  class="form-input"
+                  type="text"
+                  [(ngModel)]="participantInput"
+                  name="participantInput"
+                  placeholder="Digite nome ou e-mail para buscar"
+                  (input)="onParticipantInputChange($event)"
+                  (ngModelChange)="onParticipantInputChange()"
+                  (keydown)="onParticipantKeyDown($event)"
+                  (blur)="onParticipantInputBlur()"
+                  autocomplete="off"
+                  data-lpignore="true"
+                  data-form-type="other"
+                />
+                <button type="button" class="btn-add" (click)="addParticipant()" aria-label="Adicionar participante">
+                  <i class="fa-solid fa-plus icon-small" aria-hidden="true"></i>
+                </button>
+              </div>
+              @if (showParticipantDropdown && participantSearchResults.length > 0) {
+                <ul class="participant-dropdown" role="listbox">
+                  @for (user of participantSearchResults; track user.email) {
+                    <li
+                      class="participant-dropdown-item"
+                      role="option"
+                      (mousedown)="selectParticipantFromSearch(user); $event.preventDefault()"
+                    >
+                      <span class="dropdown-name">{{ user.name }}</span>
+                      <span class="dropdown-email">{{ user.email }}</span>
+                    </li>
+                  }
+                </ul>
+              }
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-cancel" (click)="cancel.emit()">Cancelar</button>
+              <button type="submit" class="btn btn-submit" [disabled]="hasConflicts">
+                {{ hasConflicts ? 'Resolva os Conflitos' : 'Reservar' }}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Coluna direita - Prévia de disponibilidade -->
+        <aside class="availability-preview-sidebar" [class.visible]="availabilityPreview || loadingPreview">
+          <div class="preview-title">Prévia de disponibilidade</div>
+          <div class="preview-subtitle">Informe início/fim e participantes para visualizar a prévia.</div>
+          @if (previewError && !availabilityPreview) {
+            <p class="muted">{{ previewError }}</p>
+          } @else if (availabilityPreview) {
+            @if (loadingPreview) {
+              <p class="preview-updating muted">Atualizando...</p>
+            }
+            <div class="preview-stack">
+              <div class="preview-item preview-item-room" [class.available]="!roomHasConflicts" [class.busy]="roomHasConflicts">
+                <span class="preview-label">Sala ({{ availabilityPreview.room.email }})</span>
+              </div>
+              @for (p of availabilityPreview.participants; track p.email) {
+                <div class="preview-item preview-item-participant" [class.available]="p.isAvailable" [class.busy]="!p.isAvailable">
+                  <span class="preview-label">{{ p.email }}</span>
+                  <button type="button" class="preview-remove" (click)="removeParticipant(p.email)" [attr.aria-label]="'Remover ' + p.email">
+                    <i class="fa-solid fa-trash-can icon-small" aria-hidden="true"></i>
+                  </button>
+                </div>
+              }
+            </div>
+            <div class="timeline-legend">
+              <div class="legend-item">
+                <div class="legend-color legend-available"></div>
+                <span>Disponível</span>
+              </div>
+              <div class="legend-item">
+                <div class="legend-color legend-busy"></div>
+                <span>Ocupado</span>
+              </div>
+            </div>
+          }
+        </aside>
+      </div>
+    </div>
+  </div>
+</div>

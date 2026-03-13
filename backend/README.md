@@ -29,3 +29,5 @@ Configure os tenants diretamente no `.env`:
 - `GET /api/rooms` com `x-localidade`
 - `POST /api/schedule` com `x-localidade`
 - `POST /api/book` com `x-localidade`
+- `GET /api/bookings` com `x-localidade`
+- `DELETE /api/bookings/:eventId` com `x-localidade`

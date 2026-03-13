@@ -1,0 +1,17 @@
+<div class="sidebar-section room-info">
+  <button type="button" class="back-button" (click)="back.emit()">
+    <span class="back-icon" aria-hidden="true">←</span>
+    <span class="back-label">Voltar</span>
+  </button>
+  <h1 class="room-title">{{ room.name }}</h1>
+  <p class="room-company">{{ room.location }}</p>
+  <div class="info-grid">
+    <div class="info-item">
+      <span class="info-label">Capacidade</span>
+      <span class="info-value">{{ room.capacity }} pessoas</span>
+    </div>
+  </div>
+  <div class="status-box">
+    ℹ️ Status Atual: {{ room.occupancyPercent }}% do tempo do dia está ocupado.
+  </div>
+</div>

@@ -1,0 +1,64 @@
+.booking-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.preview {
+  margin-top: 16px;
+  border-top: 1px solid #e0e0e0;
+  padding-top: 12px;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preview-item {
+  display: flex;
+  justify-content: space-between;
+  border: 1px solid #d6f5dd;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  color: #1b5e20;
+  background: #f1fff4;
+}
+
+.preview-item.busy {
+  border-color: #f8d5d5;
+  background: #fff3f3;
+  color: #b71c1c;
+}
+
+.conflict-title {
+  margin: 12px 0 6px;
+  font-weight: 600;
+}
+
+.conflict-item {
+  margin: 0;
+  font-size: 13px;
+}
+
+.hint {
+  margin: 8px 0 0;
+}
+
+.loading-preview {
+  padding: 10px 0;
+}
+
+.error {
+  color: #b71c1c;
+  font-weight: 600;
+}

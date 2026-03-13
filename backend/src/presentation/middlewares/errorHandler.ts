@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { ZodError } from "zod";
 import { AppError } from "../../application/errors/AppError";
 
 function normalizeStatusCode(value: unknown, fallback = 500): number {
@@ -48,6 +49,18 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
       code: err.code,
       message: err.message,
       details: err.details ?? null,
+      correlationId,
+    });
+  }
+
+  if (err instanceof ZodError) {
+    const first = err.issues[0];
+    const path = first?.path?.join(".") ?? "";
+    const message = first ? (path ? `${path}: ${first.message}` : first.message) : "Dados invalidos.";
+    return res.status(400).json({
+      code: "VALIDATION_ERROR",
+      message,
+      details: err.issues,
       correlationId,
     });
   }

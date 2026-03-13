@@ -1,0 +1,42 @@
+@if (bookings.length > 0 || hideHeader) {
+  <section class="bookings">
+    @if (!hideHeader) {
+      <header>
+        <h2 class="font-display">Reservas</h2>
+        <p>Total de {{ bookings.length }} reserva@if (bookings.length !== 1) {s}</p>
+      </header>
+    }
+
+    @if (bookings.length > 0) {
+    <div class="grid">
+      @for (booking of bookings; track booking.eventId) {
+        <article class="item">
+          <h3 class="font-heading">{{ booking.title }}</h3>
+
+          <div class="info-row">
+            <i class="fa-solid fa-location-dot icon-sm" aria-hidden="true"></i>
+            <span class="room">{{ booking.roomName }}</span>
+          </div>
+
+          <div class="info-row">
+            <i class="fa-solid fa-calendar-days icon-sm" aria-hidden="true"></i>
+            <span>{{ booking.startTime | date: 'dd/MM/yyyy HH:mm' }}</span>
+          </div>
+
+          <div class="info-row">
+            <i class="fa-solid fa-clock icon-sm" aria-hidden="true"></i>
+            <span>até {{ booking.endTime | date: 'dd/MM/yyyy HH:mm' }}</span>
+          </div>
+
+          @if (booking.organizer) {
+            <div class="organizer-block">
+              <span class="organizer-label">Organizador</span>
+              <span class="organizer-name">{{ booking.organizer }}</span>
+            </div>
+          }
+        </article>
+      }
+    </div>
+    }
+  </section>
+}

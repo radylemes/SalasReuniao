@@ -1,39 +1,229 @@
-// Include theming for Angular Material with `mat.theme()`.
-// This Sass mixin will define CSS variables that are used for styling Angular Material
-// components according to the Material 3 design spec.
-// Learn more about theming and how to use it for your application's
-// custom components at https://material.angular.dev/guide/theming
-@use '@angular/material' as mat;
+:root {
+  --primary: #0052cc;
+  --primary-foreground: #ffffff;
+  --status-available: #27ae60;
+  --status-occupied: #e74c3c;
+  --status-almost-full: #f39c12;
+  --radius: 0.65rem;
+  --background: #ffffff;
+  --foreground: #2c3e50;
+  --card: #f5f5f5;
+  --card-foreground: #2c3e50;
+  --secondary: #f5f5f5;
+  --muted: #e8e8e8;
+  --muted-foreground: #7f8c8d;
+  --destructive: #e74c3c;
+  --destructive-foreground: #ffffff;
+  --border: #e8e8e8;
+  --input: #ffffff;
+  --ring: #0052cc;
+}
 
-html {
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
   height: 100%;
-  @include mat.theme(
-    (
-      color: (
-        primary: mat.$azure-palette,
-        tertiary: mat.$blue-palette,
-      ),
-      typography: Roboto,
-      density: 0,
-    )
-  );
 }
 
 body {
-  // Default the application to a light color theme. This can be changed to
-  // `dark` to enable the dark color theme, or to `light dark` to defer to the
-  // user's system settings.
-  color-scheme: light;
-
-  // Set a default background, font and text colors for the application using
-  // Angular Material's system-level CSS variables. Learn more about these
-  // variables at https://material.angular.dev/guide/system-variables
-  background-color: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
-  font: var(--mat-sys-body-medium);
-
-  // Reset the user agent margin.
   margin: 0;
-  height: 100%;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: Inter, Arial, Helvetica, sans-serif;
 }
-/* You can add global styles to this file, and also import other style files */
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button:not(:disabled),
+a[href],
+select:not(:disabled),
+input:not(:disabled),
+textarea:not(:disabled) {
+  cursor: pointer;
+}
+
+.container {
+  width: 100%;
+  margin: 0 auto;
+  padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1280px;
+    padding-inline: 2rem;
+  }
+}
+
+.font-display {
+  font-family: Poppins, Arial, Helvetica, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.font-heading {
+  font-family: Poppins, Arial, Helvetica, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.font-body {
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  font-weight: 400;
+}
+
+.badge-available,
+.badge-occupied,
+.badge-almost-full {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.badge-available {
+  background-color: #e8f5e9;
+  color: #27ae60;
+}
+
+.badge-occupied {
+  background-color: #fadbd8;
+  color: #e74c3c;
+}
+
+.badge-almost-full {
+  background-color: #fef5e7;
+  color: #f39c12;
+}
+
+.room-card {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--card);
+  padding: 1.5rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+}
+
+.room-card:hover {
+  box-shadow: 0 8px 16px rgb(0 0 0 / 12%);
+  transform: translateY(-2px);
+}
+
+.timeline-slot {
+  position: relative;
+  width: 100%;
+  height: 3rem;
+  border-radius: 0.5rem;
+  border: 1px solid;
+  transition: all 0.15s ease;
+}
+
+.timeline-slot-available {
+  border-color: #c8e6c9;
+  background-color: #e8f5e9;
+}
+
+.timeline-slot-available:hover {
+  background-color: #d4edda;
+}
+
+.timeline-slot-occupied {
+  border-color: #f5c6cb;
+  background-color: #fadbd8;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.btn-primary {
+  border: none;
+  border-radius: var(--radius);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgb(0 82 204 / 15%);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 4px 12px rgb(0 82 204 / 25%);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--input);
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgb(0 82 204 / 12%);
+}
+
+.form-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}

@@ -1,0 +1,25 @@
+<article class="room-card card" (click)="select.emit(id)">
+  <div class="card-header">
+    <div class="header-content">
+      <h3 class="font-heading">{{ name }}</h3>
+      <div class="email-row">
+        <i class="fa-solid fa-envelope icon-sm" aria-hidden="true"></i>
+        <span class="email">{{ email }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="capacity-row">
+      <i class="fa-solid fa-users icon-sm" aria-hidden="true"></i>
+      <span class="capacity">Capacidade: {{ capacity }}</span>
+    </div>
+    <div class="badge-wrap">
+      <span [class]="statusClass">{{ occupancyPercent }}% ocupado</span>
+    </div>
+  </div>
+
+  <footer class="card-footer">
+    <p>Clique para ver horários</p>
+  </footer>
+</article>
