@@ -21,10 +21,12 @@
   gap: 0.75rem;
 }
 
+.email-row,
 .capacity-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1.25rem 1fr;
   gap: 0.5rem;
+  align-items: center;
 }
 
 .capacity {
@@ -42,17 +44,25 @@
   width: 1rem;
   height: 1rem;
   color: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
 }
 
 .email-row {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
   margin-top: 0.5rem;
+  min-height: 1.25rem;
 }
 
-.email-row .email {
-  flex: 1;
+.email-row .icon-sm,
+.capacity-row .icon-sm {
+  transform: translateY(0.06em);
+}
+
+.email-row .email,
+.capacity-row .capacity {
   min-width: 0;
 }
 
