@@ -6,10 +6,25 @@
   background-color: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(4px);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.75rem;
   padding: 1rem;
   animation: bookingFadeIn 200ms ease-out;
+}
+
+.modal-server-alert {
+  width: 100%;
+  max-width: 72rem;
+  flex-shrink: 0;
+  border-radius: 0.6rem;
+  border: 1px solid #f5c6cb;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.875rem;
+  background: #fdecec;
+  color: #943126;
+  z-index: 1;
 }
 
 /* Container */
@@ -198,6 +213,11 @@
   border-radius: 9999px;
   margin-left: 1.75rem;
   margin-top: 0.5rem;
+}
+
+.status-badge.busy {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .participants-status {

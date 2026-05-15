@@ -47,7 +47,11 @@
               <i class="fa-solid fa-circle-check info-item-icon" aria-hidden="true"></i>
               <span class="info-item-label">Disponibilidade</span>
             </div>
-            <span class="status-badge">Disponível</span>
+            @if (availabilityPreview) {
+              <span class="status-badge" [class.busy]="!isRoomAvailable()">{{ isRoomAvailable() ? 'Disponível' : 'Indisponível' }}</span>
+            } @else {
+              <span class="status-badge">Disponível</span>
+            }
           </div>
 
           @if (participants.length > 0 && availabilityPreview) {
@@ -191,8 +195,8 @@
 
             <div class="form-actions">
               <button type="button" class="btn btn-cancel" (click)="cancel.emit()">Cancelar</button>
-              <button type="submit" class="btn btn-submit" [disabled]="hasConflicts">
-                {{ hasConflicts ? 'Resolva os Conflitos' : 'Reservar' }}
+              <button type="submit" class="btn btn-submit" [disabled]="hasConflicts || isSubmitting">
+                {{ isSubmitting ? 'A reservar...' : hasConflicts ? submitConflictLabel : 'Reservar' }}
               </button>
             </div>
           </form>
@@ -213,7 +217,7 @@
                 <span class="preview-label">Sala ({{ availabilityPreview.room.email }})</span>
               </div>
               @for (p of availabilityPreview.participants; track p.email) {
-                <div class="preview-item preview-item-participant" [class.available]="p.isAvailable" [class.busy]="!p.isAvailable">
+                <div class="preview-item preview-item-participant" [class.available]="isParticipantAvailable(p.email)" [class.busy]="!isParticipantAvailable(p.email)">
                   <span class="preview-label">{{ p.email }}</span>
                   <button type="button" class="preview-remove" (click)="removeParticipant(p.email)" [attr.aria-label]="'Remover ' + p.email">
                     <i class="fa-solid fa-trash-can icon-small" aria-hidden="true"></i>

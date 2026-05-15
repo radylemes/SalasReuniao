@@ -29,13 +29,6 @@
       </div>
     </div>
 
-    @if (errorMessage) {
-      <div class="alert error">{{ errorMessage }}</div>
-    }
-    @if (successMessage) {
-      <div class="alert success">{{ successMessage }}</div>
-    }
-
     @if (activeTab === 'reservas') {
       @if (isLoadingBookings) {
         <p class="muted">Carregando reservas...</p>
@@ -105,6 +98,7 @@
       [roomCapacity]="selectedRoom.capacity"
       [selectedSlot]="selectedSlot"
       [slots]="slots"
+      [isSubmitting]="isBooking"
       (cancel)="onCloseBookingForm()"
       (submitBooking)="onSubmitBooking($event)"
     ></app-booking-form>

@@ -24,13 +24,15 @@
 }
 
 .time-slots {
+  --columns: 6;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(var(--columns), 1fr);
   gap: 12px;
   margin-bottom: 20px;
 }
 
 .time-slot {
+  grid-column: span min(var(--span, 1), var(--columns));
   padding: 14px 10px;
   border: 2px solid #e5e7eb;
   border-radius: 8px;
@@ -104,7 +106,7 @@
 
 @media (max-width: 768px) {
   .time-slots {
-    grid-template-columns: repeat(3, 1fr);
+    --columns: 3;
     gap: 10px;
   }
 
@@ -116,6 +118,6 @@
 
 @media (max-width: 480px) {
   .time-slots {
-    grid-template-columns: repeat(2, 1fr);
+    --columns: 2;
   }
 }

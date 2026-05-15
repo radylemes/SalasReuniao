@@ -4,6 +4,7 @@ import { GraphRoomsGateway } from "../../domain/contracts/GraphRoomsGateway";
 import { TenantRepository } from "../../domain/contracts/TenantRepository";
 import { AvailabilityEntity, RoomSchedule } from "../../domain/entities/Room";
 import { Localidade, Tenant } from "../../domain/entities/Tenant";
+import { isBusyScheduleStatus, overlapsInterval } from "../../domain/scheduleOverlap";
 
 // Raiz do projeto: sobe de src/application/use-cases -> ../../../ = backend; ../../../../ = raiz (SalasReuniao)
 const PREVIEW_DEBUG_LOG = path.resolve(__dirname, "..", "..", "..", "..", "preview-debug.log");
@@ -36,45 +37,6 @@ export class GetAvailabilityPreviewUseCase {
     "waltertorre.com.br": "WTorre",
   };
 
-  private static readonly MS_PER_MINUTE = 60 * 1000;
-  /** Duração típica de slot (30 min). Alguns sistemas armazenam 11:30–12:00 como 11:30–12:30; tratamos como fim em start+30min. */
-  private static readonly SLOT_MS = 30 * 60 * 1000;
-  private static readonly ONE_HOUR_MS = 60 * 60 * 1000;
-
-  private effectiveItemEndMs(itemStartMs: number, itemEndMs: number): number {
-    // Aplica um buffer de 1 minuto no fim do evento para evitar tratar o slot imediatamente seguinte como ocupado
-    const endWithBuffer = itemEndMs - GetAvailabilityPreviewUseCase.MS_PER_MINUTE;
-    const durationMs = endWithBuffer - itemStartMs;
-    // Eventos de ~1h (por ex. 11:30–12:30) são tratados como 30 min para não estender a ocupação indevidamente
-    if (
-      durationMs >= GetAvailabilityPreviewUseCase.ONE_HOUR_MS - 60000 &&
-      durationMs <= GetAvailabilityPreviewUseCase.ONE_HOUR_MS + 60000
-    ) {
-      return itemStartMs + GetAvailabilityPreviewUseCase.SLOT_MS;
-    }
-    return endWithBuffer;
-  }
-
-  /**
-   * Sobreposição com fim do evento exclusivo: comparação em minutos inteiros para evitar diferenças de timezone/parsing.
-   * Só há conflito se o início da solicitação (em minuto) for estritamente anterior ao fim do evento (em minuto).
-   */
-  private overlapsRequest(
-    requestStart: string,
-    requestEnd: string,
-    itemStart: string,
-    itemEnd: string,
-  ): boolean {
-    const startMs = new Date(requestStart).getTime();
-    const endMs = new Date(requestEnd).getTime();
-    const itemStartMs = new Date(itemStart).getTime();
-    const itemEndMs = new Date(itemEnd).getTime();
-    const effectiveEndMs = this.effectiveItemEndMs(itemStartMs, itemEndMs);
-    const startMin = Math.floor(startMs / GetAvailabilityPreviewUseCase.MS_PER_MINUTE);
-    const effectiveEndMin = Math.floor(effectiveEndMs / GetAvailabilityPreviewUseCase.MS_PER_MINUTE);
-    return startMin < effectiveEndMin && endMs > itemStartMs;
-  }
-
   /** Log de debug: detalhes do overlap para um item (usar apenas para diagnóstico). */
   private logOverlapCheck(
     requestStart: string,
@@ -84,25 +46,11 @@ export class GetAvailabilityPreviewUseCase {
     status: string,
     overlaps: boolean,
   ): void {
-    const startMs = new Date(requestStart).getTime();
-    const endMs = new Date(requestEnd).getTime();
-    const itemStartMs = new Date(itemStart).getTime();
-    const itemEndMs = new Date(itemEnd).getTime();
-    const effectiveEndMs = this.effectiveItemEndMs(itemStartMs, itemEndMs);
-    const durationMin = Math.round((itemEndMs - itemStartMs) / 60000);
-    const startMin = Math.floor(startMs / GetAvailabilityPreviewUseCase.MS_PER_MINUTE);
-    const effectiveEndMin = Math.floor(effectiveEndMs / GetAvailabilityPreviewUseCase.MS_PER_MINUTE);
-    const usedHeuristic = effectiveEndMs !== itemEndMs;
     debugLog("item", {
       itemStart,
       itemEnd,
       status,
-      durationMin,
-      effectiveEndUsed: usedHeuristic,
-      startMin,
-      effectiveEndMin,
       overlaps,
-      condition: `startMin(${startMin}) < effectiveEndMin(${effectiveEndMin}) && endMs > itemStartMs => ${overlaps}`,
     });
   }
 
@@ -128,14 +76,14 @@ export class GetAvailabilityPreviewUseCase {
     const byEmail = new Map(schedules.map((schedule) => [this.normalizeEmail(schedule.roomEmail), schedule]));
     const schedule = byEmail.get(normalizedEmail) ?? schedules[expectedIndex];
     const items = schedule?.scheduleItems ?? [];
-    const nonFree = items.filter((item) => item.status.toLowerCase() !== "free");
+    const nonFree = items.filter((item) => isBusyScheduleStatus(item.status));
     if (logDebug && nonFree.length > 0) {
       debugLog("Sala: " + normalizedEmail);
       debugLog("Request", { requestStart, requestEnd });
       debugLog("Itens do calendário (não free): " + nonFree.length);
     }
     const conflicts = nonFree.filter((item) => {
-      const overlaps = this.overlapsRequest(requestStart, requestEnd, item.start, item.end);
+      const overlaps = overlapsInterval(requestStart, requestEnd, item.start, item.end);
       if (logDebug) {
         this.logOverlapCheck(requestStart, requestEnd, item.start, item.end, item.status, overlaps);
       }

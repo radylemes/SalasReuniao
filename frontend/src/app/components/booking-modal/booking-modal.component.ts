@@ -9,7 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
-import { MatSnackBar } from '@angular/material/snack-bar';
+import { ToastService } from '../../services/toast.service';
 import { catchError, debounceTime, distinctUntilChanged, finalize, map, of, startWith, switchMap } from 'rxjs';
 import {
   AvailabilityPreviewDto,
@@ -63,7 +63,7 @@ export class BookingModalComponent implements OnInit {
   constructor(
     private readonly fb: FormBuilder,
     private readonly api: RoomsApiService,
-    private readonly snackBar: MatSnackBar,
+    private readonly toast: ToastService,
     private readonly dialogRef: MatDialogRef<BookingModalComponent, BookingModalResult>,
     @Inject(MAT_DIALOG_DATA) readonly data: BookingModalData,
   ) {
@@ -153,7 +153,7 @@ export class BookingModalComponent implements OnInit {
             (typeof error?.message === 'string' ? error.message : 'Falha ao consultar disponibilidade.');
           this.previewError = message;
           if (showFeedbackOnError) {
-            this.snackBar.open(message, 'Fechar', { duration: 5000 });
+            this.toast.error(message);
           }
         },
       });
@@ -169,7 +169,7 @@ export class BookingModalComponent implements OnInit {
     const startMs = new Date(payload.start).getTime();
     const endMs = new Date(payload.end).getTime();
     if (Number.isNaN(startMs) || Number.isNaN(endMs) || startMs >= endMs) {
-      this.snackBar.open('Intervalo invalido: inicio deve ser menor que fim.', 'Fechar', { duration: 5000 });
+      this.toast.warning('Intervalo inválido: início deve ser menor que fim.');
       return;
     }
 

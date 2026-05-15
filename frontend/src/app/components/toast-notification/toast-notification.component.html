@@ -1,0 +1,13 @@
+<div class="toast-card" [class]="'toast-card--' + data.variant" role="alert" aria-live="polite">
+  <span class="toast-accent" aria-hidden="true"></span>
+  <span class="toast-icon-wrap" aria-hidden="true">
+    <i class="fa-solid toast-icon" [ngClass]="iconClass"></i>
+  </span>
+  <div class="toast-content">
+    <div class="toast-title">{{ data.title }}</div>
+    <p class="toast-message">{{ data.message }}</p>
+  </div>
+  <button type="button" class="toast-close" (click)="close()" aria-label="Fechar notificação">
+    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+  </button>
+</div>

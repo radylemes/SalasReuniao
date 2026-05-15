@@ -29,7 +29,7 @@ export function createApp() {
   const listRoomsUseCase = new ListRoomsUseCase(graphGateway);
   const getScheduleUseCase = new GetScheduleUseCase(graphGateway);
   const getAvailabilityPreviewUseCase = new GetAvailabilityPreviewUseCase(graphGateway, tenantRepository);
-  const bookRoomUseCase = new BookRoomUseCase(graphGateway);
+  const bookRoomUseCase = new BookRoomUseCase(graphGateway, getAvailabilityPreviewUseCase);
   const listBookingsUseCase = new ListBookingsUseCase(graphGateway);
   const cancelBookingUseCase = new CancelBookingUseCase(graphGateway);
   const searchDirectoryUsersUseCase = new SearchDirectoryUsersUseCase(graphGateway);

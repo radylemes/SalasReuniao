@@ -4,7 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged, firstValueFrom, switchMap, timeout } from 'rxjs';
 import { catchError, of } from 'rxjs';
 import { BookingSubmitPayload, TimeSlotView } from '../../models/ui.models';
-import { AvailabilityPreviewDto, DirectoryUserDto, RoomsApiService } from '../../services/rooms-api.service';
+import {
+  AvailabilityItemDto,
+  AvailabilityPreviewDto,
+  DirectoryUserDto,
+  RoomsApiService,
+} from '../../services/rooms-api.service';
+import { blocksBooking } from '../../utils/schedule-overlap';
 
 interface EndOption {
   value: string;
@@ -25,6 +31,7 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
   @Input() roomCapacity?: number;
   @Input({ required: true }) selectedSlot: TimeSlotView | null = null;
   @Input({ required: true }) slots: TimeSlotView[] = [];
+  @Input() isSubmitting = false;
   @Output() submitBooking = new EventEmitter<BookingSubmitPayload>();
   @Output() cancel = new EventEmitter<void>();
 
@@ -217,6 +224,7 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   submit(): void {
+    if (this.isSubmitting) return;
     if (!this.validate()) return;
     this.submitBooking.emit({
       title: this.title.trim(),
@@ -234,12 +242,12 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
 
   get availableCount(): number {
     if (!this.availabilityPreview?.participants?.length) return 0;
-    return this.availabilityPreview.participants.filter((p) => p.isAvailable).length;
+    return this.availabilityPreview.participants.filter((p) => this.isEntityAvailable(p)).length;
   }
 
   get conflictCount(): number {
     if (!this.availabilityPreview?.participants?.length) return 0;
-    return this.availabilityPreview.participants.filter((p) => !p.isAvailable).length;
+    return this.availabilityPreview.participants.filter((p) => !this.isEntityAvailable(p)).length;
   }
 
   get roomHasConflicts(): boolean {
@@ -247,15 +255,44 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
     return this.hasRoomConflictsForSelectedRange();
   }
 
+  get hasParticipantConflicts(): boolean {
+    if (!this.availabilityPreview) return false;
+    return this.availabilityPreview.participants.some((p) => !this.isEntityAvailable(p));
+  }
+
   get hasConflicts(): boolean {
     if (!this.availabilityPreview) return false;
-    const participantsHaveConflicts = this.availabilityPreview.participants.some((p) => !p.isAvailable);
-    return this.roomHasConflicts || participantsHaveConflicts;
+    return this.roomHasConflicts || this.hasParticipantConflicts;
+  }
+
+  get submitConflictLabel(): string {
+    if (this.hasParticipantConflicts) {
+      return 'Conflito na agenda';
+    }
+    if (this.roomHasConflicts) {
+      return 'Sala indisponível';
+    }
+    return 'Resolva os Conflitos';
   }
 
   isParticipantAvailable(email: string): boolean {
     const p = this.availabilityPreview?.participants?.find((x) => x.email.toLowerCase() === email.toLowerCase());
-    return p?.isAvailable ?? true;
+    if (!p) return true;
+    return this.isEntityAvailable(p);
+  }
+
+  isEntityAvailable(entity: AvailabilityItemDto): boolean {
+    return !this.isPreviewEntityBusy(entity);
+  }
+
+  isRoomAvailable(): boolean {
+    return !this.roomHasConflicts;
+  }
+
+  /** Mesma regra do backend ao reservar (scheduleOverlap.blocksBooking). */
+  private isPreviewEntityBusy(entity: AvailabilityItemDto): boolean {
+    if (!this.startTime || !this.endTime) return false;
+    return blocksBooking(this.startTime, this.endTime, entity);
   }
 
   formatIsoTime(value: string): string {
@@ -377,21 +414,19 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
     }
   }
 
-  /**
-   * Usa os slots já calculados na tela principal para decidir se há conflito
-   * para o intervalo selecionado. Se todos os slots envolvidos estiverem
-   * como "available", consideramos que a sala não tem conflito, mesmo que
-   * a prévia do backend marque como ocupada.
-   */
   private hasRoomConflictsForSelectedRange(): boolean {
+    if (this.availabilityPreview?.room && this.isPreviewEntityBusy(this.availabilityPreview.room)) {
+      return true;
+    }
+
     if (!this.selectedSlot || !this.startTime || !this.endTime || !this.slots?.length) {
-      return !this.availabilityPreview?.room.isAvailable;
+      return false;
     }
 
     const rangeStart = new Date(this.startTime).getTime();
     const rangeEnd = new Date(this.endTime).getTime();
     if (!Number.isFinite(rangeStart) || !Number.isFinite(rangeEnd) || rangeStart >= rangeEnd) {
-      return !this.availabilityPreview?.room.isAvailable;
+      return false;
     }
 
     const overlappingSlots = this.slots.filter((slot) => {
@@ -401,11 +436,6 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
       return slotStart < rangeEnd && slotEnd > rangeStart;
     });
 
-    if (overlappingSlots.length === 0) {
-      return !this.availabilityPreview?.room.isAvailable;
-    }
-
-    const hasOccupiedSlot = overlappingSlots.some((slot) => slot.status === 'occupied');
-    return hasOccupiedSlot;
+    return overlappingSlots.some((slot) => slot.status === 'occupied');
   }
 }

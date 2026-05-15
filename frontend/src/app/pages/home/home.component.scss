@@ -78,25 +78,6 @@
   display: block;
 }
 
-.alert {
-  border-radius: 0.6rem;
-  border: 1px solid;
-  padding: 0.75rem 0.9rem;
-  font-size: 0.875rem;
-}
-
-.alert.error {
-  background: #fdecec;
-  border-color: #f5c6cb;
-  color: #943126;
-}
-
-.alert.success {
-  background: #eafaf1;
-  border-color: #c8e6c9;
-  color: #1d8348;
-}
-
 .muted {
   margin: 0;
   color: var(--muted-foreground);

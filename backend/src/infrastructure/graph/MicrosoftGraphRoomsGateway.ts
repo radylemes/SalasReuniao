@@ -90,19 +90,17 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
   }
 
   private normalizeGraphDateTime(dateTime: string, timeZone?: string): string {
-    if (/(Z|[+-]\d{2}:\d{2})$/i.test(dateTime)) {
-      return dateTime;
+    const withoutFraction = dateTime.trim().replace(/\.\d+$/, "");
+    if (/(Z|[+-]\d{2}:\d{2})$/i.test(withoutFraction)) {
+      return withoutFraction;
     }
 
     if (timeZone === "UTC") {
-      return `${dateTime}Z`;
+      return `${withoutFraction}Z`;
     }
 
-    if (timeZone === this.graphTimeZone) {
-      return `${dateTime}${this.graphTimeZoneOffset}`;
-    }
-
-    return dateTime;
+    // Horários do Graph vêm na TZ da organização (Brasil) sem sufixo — alinhar com o frontend (-03:00).
+    return `${withoutFraction}${this.graphTimeZoneOffset}`;
   }
 
   private toGraphLocalDateTime(value: string): string {

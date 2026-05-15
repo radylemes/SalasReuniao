@@ -1,9 +1,14 @@
 import { GraphRoomsGateway } from "../../domain/contracts/GraphRoomsGateway";
 import { Tenant } from "../../domain/entities/Tenant";
 import { AppError } from "../errors/AppError";
+import { blocksBooking } from "../../domain/scheduleOverlap";
+import { GetAvailabilityPreviewUseCase } from "./GetAvailabilityPreviewUseCase";
 
 export class BookRoomUseCase {
-  constructor(private readonly graphGateway: GraphRoomsGateway) {}
+  constructor(
+    private readonly graphGateway: GraphRoomsGateway,
+    private readonly getAvailabilityPreviewUseCase: GetAvailabilityPreviewUseCase,
+  ) {}
 
   async execute(
     tenant: Tenant,
@@ -16,37 +21,35 @@ export class BookRoomUseCase {
       participants: string[];
     },
   ) {
-    const schedule = await this.graphGateway.getSchedule(
-      tenant,
-      [input.roomEmail],
-      input.start,
-      input.end,
+    const participants = Array.from(
+      new Set(
+        [input.requesterEmail, ...input.participants]
+          .map((email) => email.trim().toLowerCase())
+          .filter(Boolean),
+      ),
     );
-    const roomSchedule = schedule[0];
-
-    if (!roomSchedule?.isAvailable) {
-      throw new AppError(
-        "ROOM_CONFLICT",
-        "A sala selecionada nao esta disponivel no intervalo informado.",
-        409,
-      );
-    }
-
-    const preview = await this.graphGateway.getAvailabilityPreview(
-      tenant,
-      input.roomEmail,
-      input.participants,
-      input.start,
-      input.end,
-    );
-    const busyParticipants = preview.participants.filter(
-      (participant) => participant.availabilityStatus === "busy",
+    const preview = await this.getAvailabilityPreviewUseCase.execute(tenant, {
+      roomEmail: input.roomEmail,
+      participants,
+      start: input.start,
+      end: input.end,
+    });
+    const busyParticipants = preview.participants.filter((participant) =>
+      blocksBooking(input.start, input.end, participant),
     );
     if (busyParticipants.length > 0) {
       const participantList = busyParticipants.map((participant) => participant.email).join(", ");
       throw new AppError(
         "PARTICIPANT_CONFLICT",
-        `Participante(s) indisponivel(is) no intervalo informado: ${participantList}.`,
+        `Sua agenda ou a de outro participante está ocupada neste horário: ${participantList}.`,
+        409,
+      );
+    }
+
+    if (blocksBooking(input.start, input.end, preview.room)) {
+      throw new AppError(
+        "ROOM_CONFLICT",
+        "A sala selecionada não está disponível neste horário.",
         409,
       );
     }

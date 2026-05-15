@@ -10,6 +10,8 @@ import { TimelineComponent } from '../../components/timeline/timeline.component'
 import { HeaderTab } from '../../components/header/header.component';
 import { BookingSubmitPayload, BookingView, RoomView, TimeSlotView } from '../../models/ui.models';
 import { BookingDto, RoomDto, RoomScheduleDto, RoomsApiService, ScheduleItemDto } from '../../services/rooms-api.service';
+import { ToastService } from '../../services/toast.service';
+import { isBusyScheduleStatus, overlapsInterval } from '../../utils/schedule-overlap';
 
 /** Localidades usadas na API (x-localidade). Carregamos salas e reservas de todas. */
 const API_LOCATIONS = ['Allianz', 'WTorre'] as const;
@@ -17,6 +19,12 @@ const BRAZIL_TIME_OFFSET = '-03:00';
 const DOMAIN_ALLIANZ_PARQUE = 'allianzparque.com.br';
 const DOMAIN_WTORRE = 'wtorre.com.br';
 const DOMAIN_NOVO_ANHANGABAU = 'novoanhangabau.com.br';
+
+/** Corpo de erro retornado pela API (ex.: 409 Conflict). */
+interface ApiErrorBody {
+  code?: string;
+  message?: string;
+}
 
 @Component({
   selector: 'app-home',
@@ -49,14 +57,13 @@ export class HomeComponent implements OnInit {
   isLoadingBookings = false;
   isLoadingSlots = false;
   isBooking = false;
-  errorMessage = '';
-  successMessage = '';
   private isRefreshingDashboard = false;
   private queuedRefresh = false;
 
   constructor(
     private readonly api: RoomsApiService,
     private readonly cdr: ChangeDetectorRef,
+    private readonly toast: ToastService,
   ) {}
 
   ngOnInit(): void {
@@ -185,8 +192,7 @@ export class HomeComponent implements OnInit {
 
   async onSubmitBooking(payload: BookingSubmitPayload): Promise<void> {
     if (!this.selectedRoom || !this.selectedSlot) return;
-    this.errorMessage = '';
-    this.successMessage = '';
+    if (this.isBooking) return;
     this.isBooking = true;
     const localidade = this.selectedRoom.location;
     try {
@@ -204,20 +210,34 @@ export class HomeComponent implements OnInit {
       const updatedBookings = await this.loadAllBookings(this.selectedDate);
       await this.loadAllRooms(this.selectedDate);
       await this.loadSelectedRoomSlots(localidade, this.selectedRoom, this.selectedDate, updatedBookings);
-      this.successMessage = 'Reserva criada com sucesso.';
       this.showBookingForm = false;
       this.selectedSlot = null;
       this.selectedRoom = null;
+      this.toast.success('Reserva criada com sucesso.');
     } catch (error) {
-      this.errorMessage = this.toErrorMessage(error, 'Erro inesperado ao reservar sala.');
+      const status = (error as { status?: number })?.status;
+      const apiCode = (error as { error?: ApiErrorBody })?.error?.code;
+      let fallback =
+        status === 409
+          ? 'Este horário não está mais disponível. Tente outro horário ou atualize a página.'
+          : 'Erro inesperado ao reservar sala.';
+      if (apiCode === 'PARTICIPANT_CONFLICT') {
+        fallback =
+          'Sua agenda ou a de outro participante está ocupada neste horário. Escolha outro horário ou remova participantes em conflito.';
+      } else if (apiCode === 'ROOM_CONFLICT') {
+        fallback = 'A sala selecionada não está disponível neste horário. Escolha outro horário na grade.';
+      }
+      const message = this.toErrorMessage(error, fallback);
+      this.toast.error(message);
+      if (status === 409 && this.selectedRoom) {
+        await this.syncSelectedRoomSlots();
+      }
     } finally {
       this.isBooking = false;
     }
   }
 
   private async loadDashboardData(): Promise<void> {
-    this.errorMessage = '';
-    this.successMessage = '';
     let firstError = '';
 
     try {
@@ -239,7 +259,7 @@ export class HomeComponent implements OnInit {
     }
 
     if (firstError) {
-      this.errorMessage = firstError;
+      this.toast.error(firstError);
     }
 
     this.cdr.detectChanges();
@@ -357,7 +377,8 @@ export class HomeComponent implements OnInit {
     try {
       await this.loadSelectedRoomSlots(this.selectedRoom.location, this.selectedRoom, this.selectedDate, this.bookings);
     } catch (error) {
-      this.errorMessage = this.toErrorMessage(error, 'Erro inesperado ao consultar agenda da sala.');
+      const msg = this.toErrorMessage(error, 'Erro inesperado ao consultar agenda da sala.');
+      this.toast.error(msg);
     }
   }
 
@@ -407,7 +428,7 @@ export class HomeComponent implements OnInit {
       const endTime =
         endMinute === 24 * 60 ? this.toBrazilIso(nextDate, 0, 0, 0) : this.toBrazilIso(date, Math.floor(endMinute / 60), endMinute % 60);
       const hasConflict = scheduleItems.some(
-        (item) => this.isBusy(item.status) && this.overlaps(startTime, endTime, item.start, item.end),
+        (item) => isBusyScheduleStatus(item.status) && overlapsInterval(startTime, endTime, item.start, item.end),
       );
 
       return {
@@ -444,38 +465,6 @@ export class HomeComponent implements OnInit {
     return `${date}T${hh}:${mm}:${ss}${BRAZIL_TIME_OFFSET}`;
   }
 
-  private isBusy(status: string): boolean {
-    return status.toLowerCase() !== 'free';
-  }
-
-  /** Se a reserva tiver ~1h no API (ex.: 11:30–12:30), tratar como 30 min (fim = início + 30 min) para não bloquear o slot seguinte. */
-  private effectiveReservEndMs(reservStart: number, reservEnd: number): number {
-    const durationMs = reservEnd - reservStart;
-    const oneHourMs = 60 * 60 * 1000;
-    const slotMs = 30 * 60 * 1000;
-    if (durationMs >= oneHourMs - 60000 && durationMs <= oneHourMs + 60000) {
-      return reservStart + slotMs;
-    }
-    return reservEnd;
-  }
-
-  private static readonly MS_PER_MINUTE = 60 * 1000;
-
-  /**
-   * Há sobreposição quando o slot e a reserva partilham tempo.
-   * Comparação em minutos inteiros para evitar diferenças de timezone/parsing; fim da reserva é exclusivo.
-   */
-  private overlaps(startA: string, endA: string, startB: string, endB: string): boolean {
-    const slotStartMs = new Date(startA).getTime();
-    const slotEndMs = new Date(endA).getTime();
-    const reservStartMs = new Date(startB).getTime();
-    const reservEndMs = new Date(endB).getTime();
-    const effectiveEndMs = this.effectiveReservEndMs(reservStartMs, reservEndMs);
-    const slotStartMin = Math.floor(slotStartMs / HomeComponent.MS_PER_MINUTE);
-    const effectiveEndMin = Math.floor(effectiveEndMs / HomeComponent.MS_PER_MINUTE);
-    return slotStartMin < effectiveEndMin && slotEndMs > reservStartMs;
-  }
-
   private formatMinutes(totalMinutes: number): string {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
@@ -488,18 +477,25 @@ export class HomeComponent implements OnInit {
     scheduleItems: ScheduleItemDto[],
     roomBookings: BookingView[],
   ): string | undefined {
-    const booking = roomBookings.find((item) => this.overlaps(startTime, endTime, item.startTime, item.endTime));
+    const booking = roomBookings.find((item) => overlapsInterval(startTime, endTime, item.startTime, item.endTime));
     if (booking?.organizer?.trim()) return booking.organizer.trim();
     const scheduleItem = scheduleItems.find(
-      (item) => this.isBusy(item.status) && this.overlaps(startTime, endTime, item.start, item.end),
+      (item) => isBusyScheduleStatus(item.status) && overlapsInterval(startTime, endTime, item.start, item.end),
     );
     if (scheduleItem?.subject?.trim()) return scheduleItem.subject.trim();
     return undefined;
   }
 
   private toErrorMessage(error: unknown, fallback: string): string {
-    const typedError = error as { error?: { message?: string }; message?: string } | null;
-    return typedError?.error?.message ?? typedError?.message ?? fallback;
+    const err = error as { error?: ApiErrorBody | string; message?: string } | null;
+    if (!err) return fallback;
+    const body = err.error;
+    if (body != null) {
+      const msg = typeof body === 'string' ? body : (body as ApiErrorBody).message;
+      if (msg?.trim()) return msg.trim();
+    }
+    if (err.message?.trim()) return err.message.trim();
+    return fallback;
   }
 
   private awaitWithTimeout<T>(source: Observable<T>): Promise<T> {

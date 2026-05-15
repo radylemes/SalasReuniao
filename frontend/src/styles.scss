@@ -227,3 +227,21 @@ textarea:not(:disabled) {
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
 }
+
+/* Toasts (MatSnackBar + componente customizado) — overlay fora dos componentes */
+.cdk-overlay-container .mat-mdc-snack-bar-container.app-toast-panel {
+  margin: 0 1.25rem 1.25rem 0;
+  max-width: none;
+  z-index: 1100;
+}
+
+.cdk-overlay-container .mat-mdc-snack-bar-container.app-toast-panel .mdc-snackbar__surface {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  min-height: auto !important;
+}
+
+.cdk-overlay-container .mat-mdc-snack-bar-container.app-toast-panel .mat-mdc-snack-bar-label {
+  padding: 0 !important;
+}
