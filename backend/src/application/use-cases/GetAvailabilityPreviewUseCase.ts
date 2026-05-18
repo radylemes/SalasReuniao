@@ -4,7 +4,8 @@ import { GraphRoomsGateway } from "../../domain/contracts/GraphRoomsGateway";
 import { TenantRepository } from "../../domain/contracts/TenantRepository";
 import { AvailabilityEntity, RoomSchedule } from "../../domain/entities/Room";
 import { Localidade, Tenant } from "../../domain/entities/Tenant";
-import { isBusyScheduleStatus, overlapsInterval } from "../../domain/scheduleOverlap";
+import { isBusyInAvailabilityView, isBusyScheduleStatus, overlapsInterval } from "../../domain/scheduleOverlap";
+import { Booking, ScheduleItem } from "../../domain/entities/Room";
 
 // Raiz do projeto: sobe de src/application/use-cases -> ../../../ = backend; ../../../../ = raiz (SalasReuniao)
 const PREVIEW_DEBUG_LOG = path.resolve(__dirname, "..", "..", "..", "..", "preview-debug.log");
@@ -58,6 +59,33 @@ export class GetAvailabilityPreviewUseCase {
     return email.trim().toLowerCase();
   }
 
+  /** Inclui eventos que terminam no início do pedido (getSchedule pode omitir com janela estreita). */
+  private padScheduleWindowStart(iso: string, minutes = 180): string {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return iso;
+    date.setMinutes(date.getMinutes() - minutes);
+    return date.toISOString();
+  }
+
+  private mergeBusyItems(scheduleItems: ScheduleItem[], bookings: Booking[]): ScheduleItem[] {
+    const merged = new Map<string, ScheduleItem>();
+    for (const item of scheduleItems) {
+      if (!isBusyScheduleStatus(item.status)) continue;
+      const key = `${item.start}|${item.end}`;
+      merged.set(key, item);
+    }
+    for (const booking of bookings) {
+      const key = `${booking.start}|${booking.end}`;
+      merged.set(key, {
+        start: booking.start,
+        end: booking.end,
+        status: "busy",
+        subject: booking.title,
+      });
+    }
+    return Array.from(merged.values());
+  }
+
   private resolveLocalidadeByEmail(email: string): Localidade | null {
     const domain = this.normalizeEmail(email).split("@")[1];
     if (!domain) return null;
@@ -71,12 +99,13 @@ export class GetAvailabilityPreviewUseCase {
     requestStart: string,
     requestEnd: string,
     logDebug = false,
+    roomBookings: Booking[] = [],
   ): AvailabilityEntity {
     const normalizedEmail = this.normalizeEmail(email);
     const byEmail = new Map(schedules.map((schedule) => [this.normalizeEmail(schedule.roomEmail), schedule]));
     const schedule = byEmail.get(normalizedEmail) ?? schedules[expectedIndex];
     const items = schedule?.scheduleItems ?? [];
-    const nonFree = items.filter((item) => isBusyScheduleStatus(item.status));
+    const nonFree = this.mergeBusyItems(items, roomBookings);
     if (logDebug && nonFree.length > 0) {
       debugLog("Sala: " + normalizedEmail);
       debugLog("Request", { requestStart, requestEnd });
@@ -89,8 +118,29 @@ export class GetAvailabilityPreviewUseCase {
       }
       return overlaps;
     });
+
+    const graphWindowStart =
+      schedule?.scheduleGraphStart && schedule.availabilityViewIntervalMinutes
+        ? `${schedule.scheduleGraphStart}${process.env.GRAPH_TIMEZONE_OFFSET ?? "-03:00"}`
+        : null;
+    const busyInAvailabilityView =
+      graphWindowStart &&
+      schedule?.availabilityView &&
+      schedule.availabilityViewIntervalMinutes &&
+      isBusyInAvailabilityView(
+        schedule.availabilityView,
+        graphWindowStart,
+        requestStart,
+        requestEnd,
+        schedule.availabilityViewIntervalMinutes,
+      );
+
+    if (busyInAvailabilityView && logDebug) {
+      debugLog("availabilityView indica ocupado no intervalo pedido");
+    }
+
     const availabilityStatus: AvailabilityEntity["availabilityStatus"] =
-      !schedule ? "unknown" : conflicts.length > 0 ? "busy" : "available";
+      !schedule ? "unknown" : conflicts.length > 0 || busyInAvailabilityView ? "busy" : "available";
     if (logDebug) {
       debugLog("Resultado", { conflictsCount: conflicts.length, availabilityStatus });
       debugLog("---");
@@ -115,7 +165,11 @@ export class GetAvailabilityPreviewUseCase {
       start: input.start,
       end: input.end,
     });
-    const roomSchedule = await this.graphGateway.getSchedule(tenant, [normalizedRoomEmail], input.start, input.end);
+    const scheduleWindowStart = this.padScheduleWindowStart(input.start);
+    const [roomSchedule, roomBookings] = await Promise.all([
+      this.graphGateway.getSchedule(tenant, [normalizedRoomEmail], scheduleWindowStart, input.end),
+      this.graphGateway.listBookings(tenant, { start: scheduleWindowStart, end: input.end }),
+    ]);
     const room = this.buildEntityFromSchedules(
       normalizedRoomEmail,
       0,
@@ -123,6 +177,7 @@ export class GetAvailabilityPreviewUseCase {
       input.start,
       input.end,
       true,
+      roomBookings.filter((booking) => this.normalizeEmail(booking.roomEmail) === normalizedRoomEmail),
     );
 
     const participantsByLocalidade = new Map<Localidade, string[]>();
@@ -166,7 +221,12 @@ export class GetAvailabilityPreviewUseCase {
         continue;
       }
 
-      const schedules = await this.graphGateway.getSchedule(targetTenant, emails, input.start, input.end);
+      const schedules = await this.graphGateway.getSchedule(
+        targetTenant,
+        emails,
+        scheduleWindowStart,
+        input.end,
+      );
       emails.forEach((email, index) => {
         participantEntitiesByEmail.set(
           email,

@@ -1,0 +1,73 @@
+<div class="tablet-settings-overlay" (click)="onClose()">
+  <div class="tablet-settings-panel" (click)="$event.stopPropagation()">
+    <header class="tablet-settings-panel__header">
+      <h2>Configuração do tablet</h2>
+      <button type="button" class="tablet-settings-panel__close" (click)="onClose()" aria-label="Fechar">×</button>
+    </header>
+
+    <form class="tablet-settings-panel__form" [formGroup]="form" (ngSubmit)="onSave()">
+      <div class="tablet-settings-panel__body">
+        @if (errorMessage) {
+          <p class="tablet-settings-panel__error" role="alert">{{ errorMessage }}</p>
+        }
+
+        <label class="tablet-settings-field">
+          <span>URL da API</span>
+          <input type="url" formControlName="apiBaseUrl" placeholder="http://192.168.1.50:3000/api" />
+        </label>
+
+        <div class="tablet-settings-row tablet-settings-row--location">
+          <label class="tablet-settings-field">
+            <span>Localidade</span>
+            <input type="text" formControlName="localidade" placeholder="Allianz" />
+          </label>
+          <label class="tablet-settings-field tablet-settings-field--grow">
+            <span>E-mail da sala</span>
+            <input type="email" formControlName="roomEmail" placeholder="sala@empresa.com" />
+          </label>
+        </div>
+
+        <label class="tablet-settings-field">
+          <span>Localização (demo)</span>
+          <input type="text" formControlName="demoLocation" placeholder="Andar 3, Ala Norte" />
+        </label>
+
+        <div class="tablet-settings-row tablet-settings-row--temps">
+          <label class="tablet-settings-field">
+            <span>Temp. atual (°C)</span>
+            <input type="number" formControlName="demoTemperature" min="16" max="28" />
+          </label>
+          <label class="tablet-settings-field">
+            <span>Temp. meta (°C)</span>
+            <input type="number" formControlName="demoTemperatureTarget" min="16" max="28" />
+          </label>
+        </div>
+
+        <div class="tablet-settings-checkin">
+          <label class="tablet-settings-field tablet-settings-field--checkbox">
+            <input type="checkbox" formControlName="checkInModeEnabled" />
+            <span>Modo check-in</span>
+          </label>
+          <label class="tablet-settings-field tablet-settings-field--grow">
+            <span>Espera check-in (min)</span>
+            <input type="number" formControlName="checkInGraceMinutes" min="1" max="60" />
+          </label>
+        </div>
+        <p class="tablet-settings-hint">
+          Sem check-in no prazo após o início, a reserva é cancelada automaticamente.
+        </p>
+      </div>
+
+      <footer class="tablet-settings-panel__footer">
+        <button type="button" class="btn-tablet-settings btn-tablet-settings--ghost" (click)="onClose()">
+          Fechar
+        </button>
+        <button type="button" class="btn-tablet-settings btn-tablet-settings--outline" (click)="onReset()">
+          Restaurar
+        </button>
+        <button type="submit" class="btn-tablet-settings btn-tablet-settings--primary">Guardar</button>
+      </footer>
+    </form>
+  </div>
+</div>
+

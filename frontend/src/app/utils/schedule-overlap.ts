@@ -24,10 +24,20 @@ export function blocksBooking(
   entity: { availabilityStatus?: string; conflicts?: ScheduleConflictItem[] },
 ): boolean {
   const status = entity.availabilityStatus ?? 'available';
-  if (status === 'not_validated_contact' || status === 'unknown') {
+  if (status === 'busy' || status === 'not_validated_contact' || status === 'unknown') {
     return true;
   }
   return hasBookingConflict(requestStart, requestEnd, entity.conflicts ?? []);
+}
+
+/** O instante está dentro do intervalo [início, fim) — fim exclusivo. */
+export function isInstantInsideInterval(instantMs: number, startIso: string, endIso: string): boolean {
+  const startMs = new Date(startIso).getTime();
+  const endMs = new Date(endIso).getTime();
+  if (!Number.isFinite(instantMs) || !Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return false;
+  }
+  return instantMs >= startMs && instantMs < endMs;
 }
 
 export function overlapsInterval(

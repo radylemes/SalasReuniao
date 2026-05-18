@@ -135,4 +135,12 @@ export class TimelineComponent implements OnInit {
     if (slot.status === 'occupied') return;
     this.slotSelect.emit(slot);
   }
+
+  getSlotDurationLabel(slot: TimeSlotView): string {
+    const minutes = slot.endMinute - slot.startMinute;
+    if (minutes <= 0 || minutes === 30) {
+      return '30 min';
+    }
+    return `${minutes} min`;
+  }
 }

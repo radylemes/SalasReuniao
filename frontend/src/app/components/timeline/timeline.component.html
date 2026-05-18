@@ -1,7 +1,7 @@
 <div class="time-grid-section">
   @for (period of slotsByPeriod; track period.label) {
     <div class="period-separator">{{ period.label }}</div>
-    <div class="time-slots">
+    <div class="time-slots" [style.--columns]="columns">
       @for (slot of period.slots; track slot.startTime) {
         <button
           type="button"
@@ -9,11 +9,11 @@
           [style.--span]="slot.span"
           [disabled]="slot.status === 'occupied'"
           (click)="onSlotClick(slot)"
-          [title]="slot.status === 'occupied' ? 'Reservado por: ' + (slot.bookedBy || 'Nao identificado') : slot.displayTime + ' - 30 min'"
+          [title]="slot.status === 'occupied' ? 'Reservado por: ' + (slot.bookedBy || 'Nao identificado') : slot.displayTime + ' - ' + getSlotDurationLabel(slot)"
         >
           <span class="time-slot-time">{{ slot.displayTime }}</span>
           @if (slot.status === 'available') {
-            <span class="time-slot-duration">30 min</span>
+            <span class="time-slot-duration">{{ getSlotDurationLabel(slot) }}</span>
           } @else {
             <span class="time-slot-reserved-by">{{ slot.bookedBy || 'Reservado' }}</span>
           }

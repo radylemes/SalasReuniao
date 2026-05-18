@@ -1,0 +1,258 @@
+<button
+  type="button"
+  class="tablet-corner-zone"
+  aria-label="Configuração"
+  (click)="onCornerClick()"
+></button>
+
+<div class="tablet-page">
+  @if (loadError) {
+    <div class="tablet-error">
+      <p>{{ loadError }}</p>
+    </div>
+  } @else if (isLoading && !room) {
+    <div class="tablet-loading">A carregar sala…</div>
+  } @else if (room) {
+    <header class="tablet-header">
+      <div class="tablet-header__main">
+        <h1 class="tablet-header__title font-display">{{ room.name }}</h1>
+        <p class="tablet-header__clock">{{ clock }}</p>
+      </div>
+      <div class="tablet-header__capacity">
+        <span class="tablet-header__capacity-label">Capacidade</span>
+        <strong class="tablet-header__capacity-value">{{ room.capacity }} pessoas</strong>
+      </div>
+    </header>
+
+    <main class="tablet-main">
+      <section
+        class="tablet-card tablet-card--status"
+        [class.tablet-card--occupied]="isOccupied"
+        [class.tablet-card--awaiting-checkin]="displayStatus === 'awaiting_checkin'"
+      >
+        <div class="tablet-status">
+          <div
+            class="tablet-status__icon"
+            [class.tablet-status__icon--occupied]="isOccupied"
+            [class.tablet-status__icon--awaiting]="displayStatus === 'awaiting_checkin'"
+            aria-hidden="true"
+          >
+            @if (isOccupied) {
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 12h8" />
+              </svg>
+            } @else if (displayStatus === 'awaiting_checkin') {
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+            } @else {
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 12l3 3 5-6" />
+              </svg>
+            }
+          </div>
+          <h2 class="tablet-status__title">{{ statusTitle }}</h2>
+          <p class="tablet-status__subtitle">{{ statusSubtitle }}</p>
+        </div>
+        <div class="tablet-status__actions">
+          @if (showCheckInButton) {
+            <button
+              type="button"
+              class="btn-tablet btn-tablet--primary btn-tablet--checkin"
+              [disabled]="isCheckingIn || isAutoCancelling"
+              (click)="onCheckIn()"
+            >
+              {{ checkInButtonLabel }}
+            </button>
+          } @else if (showManualOccupiedButton) {
+            @if (!manualOverride) {
+              <button type="button" class="btn-tablet btn-tablet--primary" (click)="toggleManualOccupied()">
+                Marcar como Ocupada
+              </button>
+            } @else {
+              <button type="button" class="btn-tablet btn-tablet--primary" (click)="toggleManualOccupied()">
+                Marcar como Disponível
+              </button>
+            }
+          }
+          <button type="button" class="btn-tablet btn-tablet--outline" (click)="openFullAgenda()">+ Reservar</button>
+        </div>
+      </section>
+
+      <section class="tablet-card tablet-card--meetings">
+        <h2 class="tablet-card__heading">Próximas Reuniões</h2>
+
+        @if (nextMeeting) {
+          <button type="button" class="tablet-next-meeting" (click)="openMeetingDetail(nextMeeting)">
+            <span class="tablet-next-meeting__label">Próxima</span>
+            <h3 class="tablet-next-meeting__title">{{ nextMeeting.title }}</h3>
+            <p class="tablet-next-meeting__time">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              {{ nextMeeting.time }}
+            </p>
+          </button>
+        } @else {
+          <p class="tablet-empty">Sem reuniões agendadas para hoje.</p>
+        }
+
+        <ul class="tablet-meeting-list">
+          @for (meeting of otherMeetings; track meeting.startTime) {
+            <li>
+              <button type="button" class="tablet-meeting-list__item" (click)="openMeetingDetail(meeting)">
+                <span>{{ meeting.time }}</span>
+                <span class="tablet-meeting-list__sep">|</span>
+                <span class="tablet-meeting-list__title">{{ meeting.title }}</span>
+                @if (meeting.organizer) {
+                  <span class="tablet-meeting-list__sep">|</span>
+                  <span>{{ meeting.organizer }}</span>
+                }
+                <svg class="tablet-meeting-list__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </button>
+            </li>
+          }
+        </ul>
+
+        <button type="button" class="tablet-link" (click)="openFullAgenda()">Ver agenda completa</button>
+      </section>
+    </main>
+
+    <footer class="tablet-footer">
+      <article class="tablet-stat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 21s-6-5.4-6-10a6 6 0 1112 0c0 4.6-6 10-6 10z" />
+          <circle cx="12" cy="11" r="2.5" />
+        </svg>
+        <div class="tablet-stat__body">
+          <span class="tablet-stat__label">Localização</span>
+          <strong class="tablet-stat__value">{{ demoLocation }}</strong>
+        </div>
+      </article>
+
+      <article class="tablet-stat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M16 11c1.7 0 3-1.3 3-3S17.7 5 16 5s-3 1.3-3 3 1.3 3 3 3zM8 13c1.7 0 3-1.3 3-3S9.7 7 8 7 5 8.3 5 10s1.3 3 3 3z" />
+          <path d="M8 13c-2.2 0-4 1.8-4 4v1h8v-1c0-2.2-1.8-4-4-4zM16 11c-2.2 0-4 1.8-4 4v1h8v-1c0-2.2-1.8-4-4-4z" />
+        </svg>
+        <div class="tablet-stat__body">
+          <span class="tablet-stat__label">Ocupação Hoje</span>
+          <span [class]="occupancyBadgeClass" class="tablet-stat__occupancy-badge">{{ occupancyPercent }}% ocupado</span>
+        </div>
+      </article>
+
+      <article class="tablet-stat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+        <div class="tablet-stat__body">
+          <span class="tablet-stat__label">Próxima Disponibilidade</span>
+          <strong class="tablet-stat__value">{{ nextAvailability }}</strong>
+        </div>
+      </article>
+
+      <article class="tablet-stat tablet-stat--temp">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M14 14.76V5a2 2 0 00-4 0v9.76a4 4 0 104 0z" />
+        </svg>
+        <div class="tablet-stat__body tablet-stat__body--temp">
+          <span class="tablet-stat__label">Temperatura</span>
+          <strong class="tablet-stat__value">{{ demoTemperature }}°C</strong>
+          <span class="tablet-stat__meta">Meta: {{ demoTemperatureTarget }}°C</span>
+          <div class="tablet-temp-bar" aria-hidden="true">
+            <span class="tablet-temp-bar__track">
+              <span class="tablet-temp-bar__fill" [style.width.%]="temperaturePercent"></span>
+              <span class="tablet-temp-bar__thumb" [style.left.%]="temperaturePercent"></span>
+            </span>
+            <span class="tablet-temp-bar__labels">
+              <span>16°C</span>
+              <span>28°C</span>
+            </span>
+          </div>
+        </div>
+      </article>
+    </footer>
+  }
+</div>
+
+@if (showFullAgenda) {
+  <div class="tablet-overlay" (click)="closeFullAgenda()">
+    <div class="tablet-overlay__panel tablet-overlay__panel--agenda" (click)="$event.stopPropagation()">
+      <header class="tablet-overlay__header">
+        <h2>Agenda completa — {{ room?.name }}</h2>
+        <button type="button" class="tablet-overlay__close" (click)="closeFullAgenda()" aria-label="Fechar">×</button>
+      </header>
+      <div class="tablet-overlay__body">
+        @if (agendaSlots.length > 0) {
+          <app-timeline
+            [slots]="agendaSlots"
+            [selectedSlot]="selectedSlot"
+            (slotSelect)="onAgendaSlotSelect($event)"
+          />
+        } @else {
+          <p class="tablet-empty">Nenhum horário disponível para o restante do dia.</p>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+@if (selectedMeeting && room) {
+  <app-tablet-meeting-detail
+    [meeting]="selectedMeeting"
+    [roomName]="room.name"
+    (closed)="closeMeetingDetail()"
+  />
+}
+
+@if (showPinPrompt) {
+  <app-tablet-pin-dialog (confirmed)="onPinConfirmed()" (closed)="closePinPrompt()" />
+}
+
+@if (showSettings) {
+  <app-tablet-settings-panel
+    [config]="kioskConfigSnapshot"
+    (saved)="onSettingsSaved($event)"
+    (closed)="closeSettings()"
+  />
+}
+
+@if (isScreensaverActive && room) {
+  <div
+    class="tablet-screensaver"
+    role="presentation"
+    (pointerdown)="dismissScreensaver()"
+    (touchstart)="dismissScreensaver()"
+  >
+    <div class="tablet-screensaver__viewport" aria-hidden="true">
+      <div class="tablet-screensaver__track">
+        <span class="tablet-screensaver__text">{{ screensaverTickerText }}</span>
+        <span class="tablet-screensaver__text">{{ screensaverTickerText }}</span>
+      </div>
+    </div>
+    <p class="tablet-screensaver__sr-only" aria-live="polite">
+      {{ screensaverTickerText }}
+    </p>
+  </div>
+}
+
+@if (showBookingForm && room) {
+  <app-booking-form
+    [localidade]="localidade"
+    [roomName]="room.name"
+    [roomEmail]="room.email"
+    [roomCapacity]="room.capacity"
+    [selectedSlot]="selectedSlot"
+    [slots]="slots"
+    [isSubmitting]="isBooking"
+    (submitBooking)="onSubmitBooking($event)"
+    (cancel)="closeBooking()"
+  />
+}

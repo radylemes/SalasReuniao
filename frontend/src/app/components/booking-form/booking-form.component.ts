@@ -11,6 +11,7 @@ import {
   RoomsApiService,
 } from '../../services/rooms-api.service';
 import { blocksBooking } from '../../utils/schedule-overlap';
+import { RoomScheduleService } from '../../services/room-schedule.service';
 
 interface EndOption {
   value: string;
@@ -53,6 +54,7 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
 
   requesterSearchResults: DirectoryUserDto[] = [];
   showRequesterDropdown = false;
+  showRequesterConflictConfirm = false;
 
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly participantQuery$ = new Subject<string>();
@@ -60,6 +62,7 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
 
   constructor(
     private readonly api: RoomsApiService,
+    private readonly schedule: RoomScheduleService,
     private readonly cdr: ChangeDetectorRef,
   ) {}
 
@@ -126,8 +129,10 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['selectedSlot'] || changes['slots']) {
+    if (changes['selectedSlot']) {
       this.syncTimesFromSelection();
+    }
+    if (changes['selectedSlot'] || changes['slots']) {
       this.computeEndOptions();
       this.schedulePreview();
     }
@@ -226,12 +231,33 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
   submit(): void {
     if (this.isSubmitting) return;
     if (!this.validate()) return;
+    if (this.hasBlockingConflicts) return;
+    if (this.requesterHasConflict) {
+      this.showRequesterConflictConfirm = true;
+      this.cdr.markForCheck();
+      return;
+    }
+    this.emitBooking();
+  }
+
+  confirmRequesterConflict(): void {
+    this.showRequesterConflictConfirm = false;
+    this.emitBooking(true);
+  }
+
+  cancelRequesterConflictConfirm(): void {
+    this.showRequesterConflictConfirm = false;
+    this.cdr.markForCheck();
+  }
+
+  private emitBooking(allowRequesterConflict = false): void {
     this.submitBooking.emit({
       title: this.title.trim(),
       startTime: this.startTime,
       endTime: this.endTime,
-      requesterEmail: this.requesterEmail.trim().toLowerCase(),
-      participants: this.participants.filter((item) => item !== this.requesterEmail.trim().toLowerCase()),
+      requesterEmail: this.normalizedRequesterEmail,
+      participants: this.participants.filter((item) => item !== this.normalizedRequesterEmail),
+      ...(allowRequesterConflict ? { allowRequesterConflict: true } : {}),
     });
   }
 
@@ -240,14 +266,49 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
     return first ?? '';
   }
 
+  get normalizedRequesterEmail(): string {
+    return this.requesterEmail.trim().toLowerCase();
+  }
+
+  get requesterPreview(): AvailabilityItemDto | undefined {
+    if (!this.availabilityPreview?.participants?.length || !this.normalizedRequesterEmail) return undefined;
+    return this.availabilityPreview.participants.find(
+      (p) => p.email.trim().toLowerCase() === this.normalizedRequesterEmail,
+    );
+  }
+
+  get requesterHasConflict(): boolean {
+    const preview = this.requesterPreview;
+    if (!preview) return false;
+    return this.isPreviewEntityBusy(preview);
+  }
+
+  get otherParticipantsHaveConflicts(): boolean {
+    if (!this.availabilityPreview?.participants?.length) return false;
+    return this.optionalParticipantPreview.some((p) => this.isPreviewEntityBusy(p));
+  }
+
+  get hasBlockingConflicts(): boolean {
+    if (!this.availabilityPreview) return false;
+    return this.roomHasConflicts || this.otherParticipantsHaveConflicts;
+  }
+
+  get requesterConflictMessage(): string {
+    const timeRange = `${this.formatIsoTime(this.startTime)} – ${this.formatIsoTime(this.endTime)}`;
+    const subject = this.requesterPreview?.conflicts?.find((c) => c.subject?.trim())?.subject?.trim();
+    const base = `O solicitante (${this.normalizedRequesterEmail}) já tem compromisso neste horário (${timeRange}).`;
+    if (subject) {
+      return `${base} Conflito: "${subject}". Deseja realmente agendar a reunião?`;
+    }
+    return `${base} Deseja realmente agendar a reunião?`;
+  }
+
   get availableCount(): number {
-    if (!this.availabilityPreview?.participants?.length) return 0;
-    return this.availabilityPreview.participants.filter((p) => this.isEntityAvailable(p)).length;
+    return this.optionalParticipantPreview.filter((p) => this.isEntityAvailable(p)).length;
   }
 
   get conflictCount(): number {
-    if (!this.availabilityPreview?.participants?.length) return 0;
-    return this.availabilityPreview.participants.filter((p) => !this.isEntityAvailable(p)).length;
+    return this.optionalParticipantPreview.filter((p) => !this.isEntityAvailable(p)).length;
   }
 
   get roomHasConflicts(): boolean {
@@ -255,18 +316,8 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
     return this.hasRoomConflictsForSelectedRange();
   }
 
-  get hasParticipantConflicts(): boolean {
-    if (!this.availabilityPreview) return false;
-    return this.availabilityPreview.participants.some((p) => !this.isEntityAvailable(p));
-  }
-
-  get hasConflicts(): boolean {
-    if (!this.availabilityPreview) return false;
-    return this.roomHasConflicts || this.hasParticipantConflicts;
-  }
-
   get submitConflictLabel(): string {
-    if (this.hasParticipantConflicts) {
+    if (this.otherParticipantsHaveConflicts) {
       return 'Conflito na agenda';
     }
     if (this.roomHasConflicts) {
@@ -275,7 +326,14 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
     return 'Resolva os Conflitos';
   }
 
+  isRequesterEmail(email: string): boolean {
+    return email.trim().toLowerCase() === this.normalizedRequesterEmail;
+  }
+
   isParticipantAvailable(email: string): boolean {
+    if (this.isRequesterEmail(email)) {
+      return !this.requesterHasConflict;
+    }
     const p = this.availabilityPreview?.participants?.find((x) => x.email.toLowerCase() === email.toLowerCase());
     if (!p) return true;
     return this.isEntityAvailable(p);
@@ -296,17 +354,17 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   formatIsoTime(value: string): string {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '--:--';
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
+    return this.schedule.formatIsoTime(value);
+  }
+
+  formatSlotEndTime(slot: TimeSlotView): string {
+    return this.schedule.formatMinutes(slot.endMinute);
   }
 
   private syncTimesFromSelection(): void {
     if (!this.selectedSlot) return;
     this.startTime = this.selectedSlot.startTime;
-    if (!this.endTime) this.endTime = this.selectedSlot.endTime;
+    this.endTime = this.selectedSlot.endTime;
   }
 
   private computeEndOptions(): void {
@@ -315,14 +373,15 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
       return;
     }
 
-    const sorted = [...this.slots].sort((a, b) => a.startTime.localeCompare(b.startTime));
-    const startIndex = sorted.findIndex((slot) => slot.startTime === this.selectedSlot?.startTime);
+    const sorted = [...this.slots].sort((a, b) => a.startMinute - b.startMinute);
+    const startIndex = this.findAnchorSlotIndex(sorted);
     if (startIndex < 0) {
       this.endTimeOptions = [];
       return;
     }
 
     const options: EndOption[] = [];
+
     for (let index = startIndex; index < sorted.length; index += 1) {
       const current = sorted[index];
       if (!current || current.status === 'occupied') break;
@@ -330,9 +389,15 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
         const previous = sorted[index - 1];
         if (!previous || previous.endTime !== current.startTime) break;
       }
+
+      const rangeStart =
+        index === startIndex ? this.selectedSlot.startTime : current.startTime;
+      const rangeStartLabel = this.formatIsoTime(rangeStart);
+      const rangeEndLabel = this.formatIsoTime(current.endTime);
+
       options.push({
         value: current.endTime,
-        label: `${this.formatIsoTime(this.selectedSlot.startTime)} - ${this.formatIsoTime(current.endTime)}`,
+        label: `${rangeStartLabel} – ${rangeEndLabel}`,
       });
     }
 
@@ -340,6 +405,28 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
     if (!options.some((option) => option.value === this.endTime)) {
       this.endTime = options[0]?.value ?? '';
     }
+  }
+
+  /** Índice do bloco de 30 min que contém o horário selecionado (inclui slots parciais). */
+  private findAnchorSlotIndex(sorted: TimeSlotView[]): number {
+    if (!this.selectedSlot) return -1;
+
+    const exact = sorted.findIndex((slot) => slot.startTime === this.selectedSlot!.startTime);
+    if (exact >= 0) return exact;
+
+    const selectedStartMs = new Date(this.selectedSlot.startTime).getTime();
+    const containing = sorted.findIndex((slot) => {
+      const slotStart = new Date(slot.startTime).getTime();
+      const slotEnd = new Date(slot.endTime).getTime();
+      if (Number.isNaN(slotStart) || Number.isNaN(slotEnd) || Number.isNaN(selectedStartMs)) {
+        return false;
+      }
+      return slotStart <= selectedStartMs && slotEnd > selectedStartMs;
+    });
+    if (containing >= 0) return containing;
+
+    const blockStartMinute = Math.floor(this.selectedSlot.startMinute / 30) * 30;
+    return sorted.findIndex((slot) => slot.startMinute === blockStartMinute);
   }
 
   private validate(): boolean {
@@ -364,6 +451,11 @@ export class BookingFormComponent implements OnInit, OnChanges, OnDestroy {
 
   private isValidEmail(email: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  private get optionalParticipantPreview(): AvailabilityItemDto[] {
+    if (!this.availabilityPreview?.participants?.length) return [];
+    return this.availabilityPreview.participants.filter((p) => !this.isRequesterEmail(p.email));
   }
 
   private schedulePreview(): void {

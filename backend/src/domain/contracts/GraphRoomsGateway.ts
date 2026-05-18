@@ -18,6 +18,24 @@ export interface GraphRoomsGateway {
   ): Promise<AvailabilityPreview>;
   bookRoom(tenant: Tenant, input: BookRoomInput): Promise<{ eventId: string }>;
   listBookings(tenant: Tenant, input: { start: string; end: string }): Promise<Booking[]>;
-  cancelBooking(tenant: Tenant, eventId: string): Promise<void>;
+  getBooking(
+    tenant: Tenant,
+    eventId: string,
+    requesterEmail?: string,
+    fallbackRoomEmail?: string,
+  ): Promise<Booking | null>;
+  markBookingRequiresCheckIn(tenant: Tenant, eventId: string, requesterEmail?: string): Promise<void>;
+  checkInBooking(tenant: Tenant, eventId: string, requesterEmail?: string): Promise<void>;
+  cancelBooking(
+    tenant: Tenant,
+    eventId: string,
+    options?: {
+      requesterEmail?: string;
+      roomEmail?: string;
+      start?: string;
+      end?: string;
+      title?: string;
+    },
+  ): Promise<void>;
   searchDirectoryUsers(tenant: Tenant, query: string): Promise<DirectoryUser[]>;
 }

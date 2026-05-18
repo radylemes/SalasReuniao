@@ -1,0 +1,33 @@
+<div class="tablet-pin-overlay" (click)="onClose()">
+  <div class="tablet-pin-panel" (click)="$event.stopPropagation()">
+    <header class="tablet-pin-panel__header">
+      <h2>Introduza o PIN</h2>
+      <button type="button" class="tablet-pin-panel__close" (click)="onClose()" aria-label="Fechar">×</button>
+    </header>
+
+    <form class="tablet-pin-panel__body" (ngSubmit)="onSubmit()">
+      @if (pinError) {
+        <p class="tablet-pin-panel__error" role="alert">{{ pinError }}</p>
+      }
+
+      <label class="tablet-pin-field">
+        <span>PIN</span>
+        <input
+          type="password"
+          inputmode="numeric"
+          maxlength="6"
+          autocomplete="off"
+          [(ngModel)]="pin"
+          name="pin"
+          placeholder="••••••"
+          required
+        />
+      </label>
+
+      <footer class="tablet-pin-panel__footer">
+        <button type="button" class="btn-tablet-pin btn-tablet-pin--ghost" (click)="onClose()">Cancelar</button>
+        <button type="submit" class="btn-tablet-pin btn-tablet-pin--primary">Confirmar</button>
+      </footer>
+    </form>
+  </div>
+</div>

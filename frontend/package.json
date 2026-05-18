@@ -5,8 +5,15 @@
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
     "build": "ng build",
+    "build:tablet": "ng build --configuration tablet",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android",
+    "android:clean": "powershell -ExecutionPolicy Bypass -File scripts/android-clean.ps1",
+    "android:materialize-assets": "powershell -ExecutionPolicy Bypass -File scripts/android-materialize-assets.ps1",
+    "android:assemble": "npm run build:tablet && npx cap copy android && npm run android:clean && npm run android:materialize-assets && powershell -ExecutionPolicy Bypass -Command \"$env:JAVA_HOME='C:\\Program Files\\Android\\Android Studio\\jbr'; cd android; .\\gradlew.bat assembleDebug\"",
+    "tablet:android": "npm run build:tablet && npm run cap:sync && npm run cap:open:android"
   },
   "private": true,
   "packageManager": "npm@11.6.2",
@@ -20,6 +27,11 @@
     "@angular/material": "^21.2.1",
     "@angular/platform-browser": "^21.2.0",
     "@angular/router": "^21.2.0",
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/status-bar": "^8.0.2",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

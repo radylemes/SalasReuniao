@@ -1,0 +1,10 @@
+{
+  "allianz:sala.espetaculo@allianzparque.com.br": {
+    "checkInModeEnabled": false,
+    "checkInGraceMinutes": 5
+  },
+  "allianz:sala.fa@allianzparque.com.br": {
+    "checkInModeEnabled": false,
+    "checkInGraceMinutes": 1
+  }
+}

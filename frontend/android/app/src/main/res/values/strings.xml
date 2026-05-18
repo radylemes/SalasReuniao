@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Salas Reuniao Tablet</string>
+    <string name="title_activity_main">Salas Reuniao Tablet</string>
+    <string name="package_name">com.realarenas.salasreuniao</string>
+    <string name="custom_url_scheme">com.realarenas.salasreuniao</string>
+</resources>

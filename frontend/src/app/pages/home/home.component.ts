@@ -9,13 +9,12 @@ import { RoomDetailsComponent } from '../../components/room-details/room-details
 import { TimelineComponent } from '../../components/timeline/timeline.component';
 import { HeaderTab } from '../../components/header/header.component';
 import { BookingSubmitPayload, BookingView, RoomView, TimeSlotView } from '../../models/ui.models';
-import { BookingDto, RoomDto, RoomScheduleDto, RoomsApiService, ScheduleItemDto } from '../../services/rooms-api.service';
+import { BookingDto, RoomDto, RoomsApiService } from '../../services/rooms-api.service';
+import { RoomScheduleService } from '../../services/room-schedule.service';
 import { ToastService } from '../../services/toast.service';
-import { isBusyScheduleStatus, overlapsInterval } from '../../utils/schedule-overlap';
 
 /** Localidades usadas na API (x-localidade). Carregamos salas e reservas de todas. */
 const API_LOCATIONS = ['Allianz', 'WTorre'] as const;
-const BRAZIL_TIME_OFFSET = '-03:00';
 const DOMAIN_ALLIANZ_PARQUE = 'allianzparque.com.br';
 const DOMAIN_WTORRE = 'wtorre.com.br';
 const DOMAIN_NOVO_ANHANGABAU = 'novoanhangabau.com.br';
@@ -62,6 +61,7 @@ export class HomeComponent implements OnInit {
 
   constructor(
     private readonly api: RoomsApiService,
+    private readonly roomSchedule: RoomScheduleService,
     private readonly cdr: ChangeDetectorRef,
     private readonly toast: ToastService,
   ) {}
@@ -94,6 +94,10 @@ export class HomeComponent implements OnInit {
   }
 
   /** Salas da aba atual (por domínio) */
+  get bookableSlots(): TimeSlotView[] {
+    return this.roomSchedule.getBookableSlots(this.slots, new Date(), this.selectedDate);
+  }
+
   get roomsForCurrentTab(): RoomView[] {
     switch (this.activeTab) {
       case 'allianzparque':
@@ -205,6 +209,7 @@ export class HomeComponent implements OnInit {
           payload.endTime,
           payload.requesterEmail,
           payload.participants,
+          payload.allowRequesterConflict,
         ),
       );
       const updatedBookings = await this.loadAllBookings(this.selectedDate);
@@ -223,7 +228,10 @@ export class HomeComponent implements OnInit {
           : 'Erro inesperado ao reservar sala.';
       if (apiCode === 'PARTICIPANT_CONFLICT') {
         fallback =
-          'Sua agenda ou a de outro participante está ocupada neste horário. Escolha outro horário ou remova participantes em conflito.';
+          'A agenda de outro participante está ocupada neste horário. Escolha outro horário ou remova participantes em conflito.';
+      } else if (apiCode === 'REQUESTER_CONFLICT') {
+        fallback =
+          'O solicitante já possui compromisso neste horário. Confirme novamente se deseja agendar.';
       } else if (apiCode === 'ROOM_CONFLICT') {
         fallback = 'A sala selecionada não está disponível neste horário. Escolha outro horário na grade.';
       }
@@ -299,7 +307,7 @@ export class HomeComponent implements OnInit {
   }
 
   private async loadBookings(localidade: string, date: string): Promise<BookingView[]> {
-    const { start, end } = this.buildDayRange(date);
+    const { start, end } = this.roomSchedule.buildDayRange(date);
     const response = await this.awaitWithTimeout(this.api.listBookings(localidade, start, end));
     return response.bookings.map((booking) => this.toBooking(booking));
   }
@@ -309,7 +317,7 @@ export class HomeComponent implements OnInit {
     const mappedRooms = roomsResponse.rooms.map((room) => this.toRoom(localidade, room));
     if (mappedRooms.length === 0) return;
 
-    const { start, end } = this.buildDayRange(date);
+    const { start, end } = this.roomSchedule.buildDayRange(date);
     const scheduleResponse = await this.awaitWithTimeout(
       this.api.checkSchedule(
         localidade,
@@ -322,7 +330,7 @@ export class HomeComponent implements OnInit {
     const byRoom = new Map(scheduleResponse.schedule.map((entry) => [entry.roomEmail, entry]));
     const roomsWithStatus = mappedRooms.map((room) => {
       const roomSchedule = byRoom.get(room.email);
-      const occupancyPercent = this.getRoomOccupancyPercent(date, roomSchedule);
+      const occupancyPercent = this.roomSchedule.getOccupancyPercent(date, roomSchedule);
       return {
         ...room,
         status: occupancyPercent >= 100 ? 'occupied' : 'available',
@@ -350,11 +358,11 @@ export class HomeComponent implements OnInit {
     this.slots = [];
     this.cdr.detectChanges();
     try {
-      const { start, end } = this.buildDayRange(date);
+      const { start, end } = this.roomSchedule.buildDayRange(date);
       const response = await this.awaitWithTimeout(this.api.checkSchedule(localidade, [room.email], start, end));
       const firstSchedule = response.schedule[0];
       const roomBookings = currentBookings.filter((booking) => booking.roomEmail === room.email);
-      const updatedSlots = this.buildTimeSlots(date, firstSchedule?.scheduleItems ?? [], roomBookings);
+      const updatedSlots = this.roomSchedule.buildTimeSlots(date, firstSchedule?.scheduleItems ?? [], roomBookings);
       this.slots = updatedSlots;
       if (this.selectedSlot) {
         this.selectedSlot =
@@ -382,18 +390,6 @@ export class HomeComponent implements OnInit {
     }
   }
 
-  private getRoomOccupancyPercent(date: string, roomSchedule?: RoomScheduleDto): number {
-    if (!roomSchedule) return 0;
-    const items = roomSchedule.scheduleItems ?? [];
-    if (items.length === 0) {
-      return roomSchedule.isAvailable ? 0 : 100;
-    }
-    const slots = this.buildTimeSlots(date, items);
-    const occupiedCount = slots.filter((slot) => slot.status === 'occupied').length;
-    if (slots.length === 0) return 0;
-    return Math.round((occupiedCount / slots.length) * 100);
-  }
-
   private toRoom(localidade: string, room: RoomDto): RoomView {
     return {
       id: room.email,
@@ -416,74 +412,6 @@ export class HomeComponent implements OnInit {
       endTime: booking.end,
       organizer: booking.organizer,
     };
-  }
-
-  /** Slots de 30 min em horários cheios (:00 e :30). Conflito evita-se com buffer de 1 min no fim da reserva (overlaps). */
-  private buildTimeSlots(date: string, scheduleItems: ScheduleItemDto[], roomBookings: BookingView[] = []): TimeSlotView[] {
-    const nextDate = this.getNextDate(date);
-    return Array.from({ length: 48 }, (_, index) => {
-      const startMinute = index * 30;
-      const endMinute = startMinute + 30;
-      const startTime = this.toBrazilIso(date, Math.floor(startMinute / 60), startMinute % 60);
-      const endTime =
-        endMinute === 24 * 60 ? this.toBrazilIso(nextDate, 0, 0, 0) : this.toBrazilIso(date, Math.floor(endMinute / 60), endMinute % 60);
-      const hasConflict = scheduleItems.some(
-        (item) => isBusyScheduleStatus(item.status) && overlapsInterval(startTime, endTime, item.start, item.end),
-      );
-
-      return {
-        time: this.formatMinutes(startMinute),
-        status: hasConflict ? 'occupied' : 'available',
-        startMinute,
-        endMinute,
-        startTime,
-        endTime,
-        bookedBy: hasConflict ? this.resolveBookedBy(startTime, endTime, scheduleItems, roomBookings) : undefined,
-      };
-    });
-  }
-
-  private buildDayRange(date: string): { start: string; end: string } {
-    const nextDate = this.getNextDate(date);
-    return {
-      start: this.toBrazilIso(date, 0, 0, 0),
-      end: this.toBrazilIso(nextDate, 0, 0, 0),
-    };
-  }
-
-  private getNextDate(date: string): string {
-    const [year, month, day] = date.split('-').map(Number);
-    const base = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
-    base.setUTCDate(base.getUTCDate() + 1);
-    return base.toISOString().slice(0, 10);
-  }
-
-  private toBrazilIso(date: string, hour: number, minute = 0, second = 0): string {
-    const hh = String(hour).padStart(2, '0');
-    const mm = String(minute).padStart(2, '0');
-    const ss = String(second).padStart(2, '0');
-    return `${date}T${hh}:${mm}:${ss}${BRAZIL_TIME_OFFSET}`;
-  }
-
-  private formatMinutes(totalMinutes: number): string {
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  }
-
-  private resolveBookedBy(
-    startTime: string,
-    endTime: string,
-    scheduleItems: ScheduleItemDto[],
-    roomBookings: BookingView[],
-  ): string | undefined {
-    const booking = roomBookings.find((item) => overlapsInterval(startTime, endTime, item.startTime, item.endTime));
-    if (booking?.organizer?.trim()) return booking.organizer.trim();
-    const scheduleItem = scheduleItems.find(
-      (item) => isBusyScheduleStatus(item.status) && overlapsInterval(startTime, endTime, item.start, item.end),
-    );
-    if (scheduleItem?.subject?.trim()) return scheduleItem.subject.trim();
-    return undefined;
   }
 
   private toErrorMessage(error: unknown, fallback: string): string {

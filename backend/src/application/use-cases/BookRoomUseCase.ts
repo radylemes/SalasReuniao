@@ -1,4 +1,5 @@
 import { GraphRoomsGateway } from "../../domain/contracts/GraphRoomsGateway";
+import { KioskSettingsRepository } from "../../domain/contracts/KioskSettingsRepository";
 import { Tenant } from "../../domain/entities/Tenant";
 import { AppError } from "../errors/AppError";
 import { blocksBooking } from "../../domain/scheduleOverlap";
@@ -8,6 +9,7 @@ export class BookRoomUseCase {
   constructor(
     private readonly graphGateway: GraphRoomsGateway,
     private readonly getAvailabilityPreviewUseCase: GetAvailabilityPreviewUseCase,
+    private readonly kioskSettingsRepository: KioskSettingsRepository,
   ) {}
 
   async execute(
@@ -19,11 +21,13 @@ export class BookRoomUseCase {
       end: string;
       requesterEmail: string;
       participants: string[];
+      allowRequesterConflict?: boolean;
     },
   ) {
+    const requesterEmail = input.requesterEmail.trim().toLowerCase();
     const participants = Array.from(
       new Set(
-        [input.requesterEmail, ...input.participants]
+        [requesterEmail, ...input.participants]
           .map((email) => email.trim().toLowerCase())
           .filter(Boolean),
       ),
@@ -37,11 +41,25 @@ export class BookRoomUseCase {
     const busyParticipants = preview.participants.filter((participant) =>
       blocksBooking(input.start, input.end, participant),
     );
-    if (busyParticipants.length > 0) {
-      const participantList = busyParticipants.map((participant) => participant.email).join(", ");
+    const otherBusy = busyParticipants.filter(
+      (participant) => participant.email.trim().toLowerCase() !== requesterEmail,
+    );
+    if (otherBusy.length > 0) {
+      const participantList = otherBusy.map((participant) => participant.email).join(", ");
       throw new AppError(
         "PARTICIPANT_CONFLICT",
-        `Sua agenda ou a de outro participante está ocupada neste horário: ${participantList}.`,
+        `A agenda de outro participante está ocupada neste horário: ${participantList}.`,
+        409,
+      );
+    }
+
+    const requesterBusy = busyParticipants.some(
+      (participant) => participant.email.trim().toLowerCase() === requesterEmail,
+    );
+    if (requesterBusy && !input.allowRequesterConflict) {
+      throw new AppError(
+        "REQUESTER_CONFLICT",
+        "O solicitante já possui compromisso neste horário.",
         409,
       );
     }
@@ -54,6 +72,25 @@ export class BookRoomUseCase {
       );
     }
 
-    return this.graphGateway.bookRoom(tenant, input);
+    const kioskSettings = await this.kioskSettingsRepository.get(
+      tenant.localidade,
+      input.roomEmail,
+    );
+    const requireCheckIn = kioskSettings.checkInModeEnabled;
+
+    const result = await this.graphGateway.bookRoom(tenant, {
+      ...input,
+      requireCheckIn,
+    });
+
+    if (requireCheckIn) {
+      await this.graphGateway.markBookingRequiresCheckIn(
+        tenant,
+        result.eventId,
+        requesterEmail,
+      );
+    }
+
+    return result;
   }
 }

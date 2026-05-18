@@ -1,6 +1,7 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
+import { TabletKioskConfigService } from './tablet-kiosk-config.service';
 
 export interface RoomDto {
   name: string;
@@ -30,6 +31,13 @@ export interface BookingDto {
   start: string;
   end: string;
   organizer?: string;
+  requiresCheckIn?: boolean;
+  checkedIn?: boolean;
+}
+
+export interface RoomKioskSettingsDto {
+  checkInModeEnabled: boolean;
+  checkInGraceMinutes?: number;
 }
 
 export interface DirectoryUserDto {
@@ -60,9 +68,14 @@ export interface AvailabilityPreviewDto {
 
 @Injectable({ providedIn: 'root' })
 export class RoomsApiService {
-  private readonly baseUrl = '/api';
+  constructor(
+    private readonly http: HttpClient,
+    private readonly kioskConfig: TabletKioskConfigService,
+  ) {}
 
-  constructor(private readonly http: HttpClient) {}
+  private get baseUrl(): string {
+    return this.kioskConfig.getConfig().apiBaseUrl;
+  }
 
   getRooms(localidade: string): Observable<{ rooms: RoomDto[] }> {
     return this.http.get<{ rooms: RoomDto[] }>(`${this.baseUrl}/rooms`, {
@@ -91,10 +104,11 @@ export class RoomsApiService {
     end: string,
     requesterEmail: string,
     participants: string[],
+    allowRequesterConflict?: boolean,
   ): Observable<{ eventId: string }> {
     return this.http.post<{ eventId: string }>(
       `${this.baseUrl}/book`,
-      { roomEmail, title, start, end, requesterEmail, participants },
+      { roomEmail, title, start, end, requesterEmail, participants, allowRequesterConflict: allowRequesterConflict ?? false },
       { headers: this.localidadeHeader(localidade) },
     );
   }
@@ -125,6 +139,71 @@ export class RoomsApiService {
       headers: this.localidadeHeader(localidade),
       params,
     });
+  }
+
+  checkInBooking(
+    localidade: string,
+    eventId: string,
+    options?: { organizer?: string; roomEmail?: string },
+  ): Observable<void> {
+    const params: Record<string, string> = {};
+    if (options?.organizer?.includes('@')) {
+      params['organizer'] = options.organizer.trim();
+    }
+    if (options?.roomEmail?.includes('@')) {
+      params['roomEmail'] = options.roomEmail.trim();
+    }
+    return this.http.post<void>(
+      `${this.baseUrl}/bookings/${encodeURIComponent(eventId)}/check-in`,
+      {},
+      { headers: this.localidadeHeader(localidade), params },
+    );
+  }
+
+  cancelBooking(
+    localidade: string,
+    eventId: string,
+    options?: {
+      organizer?: string;
+      roomEmail?: string;
+      start?: string;
+      end?: string;
+      title?: string;
+    },
+  ): Observable<void> {
+    const params: Record<string, string> = {};
+    if (options?.organizer?.includes('@')) {
+      params['organizer'] = options.organizer.trim();
+    }
+    if (options?.roomEmail?.includes('@')) {
+      params['roomEmail'] = options.roomEmail.trim();
+    }
+    if (options?.start) params['start'] = options.start;
+    if (options?.end) params['end'] = options.end;
+    if (options?.title?.trim()) params['title'] = options.title.trim();
+    return this.http.delete<void>(
+      `${this.baseUrl}/bookings/${encodeURIComponent(eventId)}`,
+      { headers: this.localidadeHeader(localidade), params },
+    );
+  }
+
+  getKioskSettings(localidade: string, roomEmail: string): Observable<RoomKioskSettingsDto> {
+    return this.http.get<RoomKioskSettingsDto>(
+      `${this.baseUrl}/rooms/${encodeURIComponent(roomEmail)}/kiosk-settings`,
+      { headers: this.localidadeHeader(localidade) },
+    );
+  }
+
+  putKioskSettings(
+    localidade: string,
+    roomEmail: string,
+    settings: RoomKioskSettingsDto,
+  ): Observable<RoomKioskSettingsDto> {
+    return this.http.put<RoomKioskSettingsDto>(
+      `${this.baseUrl}/rooms/${encodeURIComponent(roomEmail)}/kiosk-settings`,
+      settings,
+      { headers: this.localidadeHeader(localidade) },
+    );
   }
 
   private localidadeHeader(localidade: string) {

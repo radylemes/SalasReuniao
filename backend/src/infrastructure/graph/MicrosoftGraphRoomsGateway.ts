@@ -10,6 +10,11 @@ import {
 } from "../../domain/entities/Room";
 import { Tenant } from "../../domain/entities/Tenant";
 import { AppError } from "../../application/errors/AppError";
+import {
+  CHECKIN_CATEGORY_CHECKED_IN,
+  CHECKIN_CATEGORY_REQUIRE,
+  mapBookingCheckInFlags,
+} from "../../domain/checkIn";
 import { GraphClientFactory } from "./GraphClientFactory";
 
 type GraphRoomResponse = {
@@ -37,11 +42,19 @@ type GraphCalendarEventResponse = {
   value: Array<{
     id: string;
     subject?: string;
+    categories?: string[];
     start?: { dateTime?: string; timeZone?: string };
     end?: { dateTime?: string; timeZone?: string };
     organizer?: { emailAddress?: { address?: string; name?: string } };
+    location?: { displayName?: string };
+    attendees?: Array<{
+      type?: string;
+      emailAddress?: { address?: string; name?: string };
+    }>;
   }>;
 };
+
+type GraphCalendarEvent = GraphCalendarEventResponse["value"][number];
 
 type GraphUsersResponse = {
   value: Array<{
@@ -180,9 +193,15 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
     scheduleEmails: string[],
     start: string,
     end: string,
-  ): Promise<GraphScheduleResponse["value"]> {
+  ): Promise<{
+    entries: GraphScheduleResponse["value"];
+    graphStart: string;
+    availabilityViewIntervalMinutes: number;
+  }> {
     const firstScheduleEmail = scheduleEmails[0];
-    if (!firstScheduleEmail) return [];
+    if (!firstScheduleEmail) {
+      return { entries: [], graphStart: "", availabilityViewIntervalMinutes: 30 };
+    }
 
     const client = this.graphFactory.create(tenant);
     const graphStart = this.toGraphLocalDateTime(start);
@@ -202,7 +221,11 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
         .post(payload),
     )) as GraphScheduleResponse;
 
-    return data.value ?? [];
+    return {
+      entries: data.value ?? [],
+      graphStart,
+      availabilityViewIntervalMinutes: availabilityViewInterval,
+    };
   }
 
   async getSchedule(
@@ -212,7 +235,12 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
     end: string,
   ): Promise<RoomSchedule[]> {
     if (roomEmails.length === 0) return [];
-    const entries = await this.fetchGraphSchedule(tenant, roomEmails, start, end);
+    const { entries, graphStart, availabilityViewIntervalMinutes } = await this.fetchGraphSchedule(
+      tenant,
+      roomEmails,
+      start,
+      end,
+    );
     return entries.map((entry) => {
       const scheduleItems = this.mapGraphScheduleItems(entry.scheduleItems);
       const isAvailable = scheduleItems.length === 0;
@@ -223,6 +251,8 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
         ...(availabilityView ? { availabilityView } : {}),
         scheduleItems,
         isAvailable,
+        scheduleGraphStart: graphStart,
+        availabilityViewIntervalMinutes,
       };
     });
   }
@@ -244,7 +274,7 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
     );
 
     const schedules = [normalizedRoomEmail, ...uniqueParticipants];
-    const entries = await this.fetchGraphSchedule(tenant, schedules, start, end);
+    const { entries } = await this.fetchGraphSchedule(tenant, schedules, start, end);
     const entryByEmail = new Map(entries.map((entry) => [entry.scheduleId.toLowerCase(), entry]));
 
     const resolveEntry = (email: string, scheduleIndex: number) => {
@@ -299,81 +329,114 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
         client.api(`/users/${encodeURIComponent(mailboxEmail)}/events`).post(payload),
       );
 
-    // Opção 3: cria reunião no calendário do solicitante e convida a sala.
-    // Se o usuário não puder ser usado como organizer (permissão/tenant), cai para o modo legado.
-    let event: any;
+    const eventTime = {
+      start: { dateTime: graphStart, timeZone: this.graphTimeZone },
+      end: { dateTime: graphEnd, timeZone: this.graphTimeZone },
+    };
+
+    const checkInCategories = input.requireCheckIn ? [CHECKIN_CATEGORY_REQUIRE] : undefined;
+    const roomAttendeeEmails = Array.from(new Set([requesterEmail, ...participantEmails]));
+    const roomCalendarPayload = (withAttendees: boolean) => ({
+      subject: input.title,
+      ...eventTime,
+      allowNewTimeProposals: false,
+      ...(checkInCategories ? { categories: checkInCategories } : {}),
+      ...(withAttendees
+        ? {
+            attendees: roomAttendeeEmails.map((email) => ({
+              emailAddress: { address: email },
+              type: "required",
+            })),
+            responseRequested: false,
+          }
+        : {}),
+    });
+
+    // Sala como recurso no calendário do solicitante → Exchange aplica autoaceite da mailbox da sala.
+    const requesterCalendarPayload = {
+      subject: input.title,
+      ...eventTime,
+      location: { displayName: input.roomEmail },
+      allowNewTimeProposals: false,
+      ...(checkInCategories ? { categories: checkInCategories } : {}),
+      attendees: [
+        {
+          emailAddress: { address: input.roomEmail },
+          type: "resource",
+        },
+        ...participantEmails.map((email) => ({
+          emailAddress: { address: email },
+          type: "required",
+        })),
+      ],
+      responseRequested: false,
+    };
+
+    const tryCreate = async (mailboxEmail: string, payload: unknown): Promise<{ id?: string }> =>
+      createInMailbox(mailboxEmail, payload);
+
     try {
-      event = await createInMailbox(requesterEmail, {
-        subject: input.title,
-        start: {
-          dateTime: graphStart,
-          timeZone: this.graphTimeZone,
-        },
-        end: {
-          dateTime: graphEnd,
-          timeZone: this.graphTimeZone,
-        },
-        location: { displayName: input.roomEmail },
-        attendees: [
-          {
-            emailAddress: { address: input.roomEmail },
-            type: "resource",
-          },
-          ...participantEmails.map((email) => ({
-            emailAddress: { address: email },
-            type: "required",
-          })),
-        ],
-        responseRequested: true,
-      });
-    } catch (organizerError: unknown) {
-      const organizerStatusCode = (organizerError as { statusCode?: number; status?: number } | null)?.statusCode
-        ?? (organizerError as { statusCode?: number; status?: number } | null)?.status;
-
-      if (organizerStatusCode !== 400 && organizerStatusCode !== 403 && organizerStatusCode !== 404) {
-        throw organizerError;
+      const event = await tryCreate(requesterEmail, requesterCalendarPayload);
+      if (event?.id) {
+        return { eventId: event.id };
       }
+    } catch (requesterError: unknown) {
+      this.throwIfRoomUnavailable(requesterError);
+      const statusCode = (requesterError as { statusCode?: number; status?: number } | null)?.statusCode
+        ?? (requesterError as { statusCode?: number; status?: number } | null)?.status;
+      if (statusCode !== 400 && statusCode !== 403 && statusCode !== 404) {
+        throw requesterError;
+      }
+    }
 
-      const legacyAttendeeEmails = Array.from(new Set([requesterEmail, ...participantEmails]));
-      const legacyPayload = (withAttendees: boolean) => ({
-        subject: input.title,
-        start: {
-          dateTime: graphStart,
-          timeZone: this.graphTimeZone,
-        },
-        end: {
-          dateTime: graphEnd,
-          timeZone: this.graphTimeZone,
-        },
-        ...(withAttendees
-          ? {
-              attendees: legacyAttendeeEmails.map((email) => ({
-                emailAddress: { address: email },
-                type: "required",
-              })),
-              responseRequested: true,
-            }
-          : {}),
-      });
-
+    let lastError: unknown;
+    for (const attempt of [
+      () => tryCreate(input.roomEmail, roomCalendarPayload(true)),
+      () => tryCreate(input.roomEmail, roomCalendarPayload(false)),
+    ]) {
       try {
-        event = await createInMailbox(input.roomEmail, legacyPayload(true));
-      } catch (legacyError: unknown) {
-        const legacyStatusCode = (legacyError as { statusCode?: number; status?: number } | null)?.statusCode
-          ?? (legacyError as { statusCode?: number; status?: number } | null)?.status;
-        if (legacyStatusCode === 400) {
-          event = await createInMailbox(input.roomEmail, legacyPayload(false));
-        } else {
-          throw legacyError;
+        const event = await attempt();
+        if (event?.id) {
+          return { eventId: event.id };
         }
+      } catch (error: unknown) {
+        lastError = error;
+        this.throwIfRoomUnavailable(error);
       }
     }
 
-    if (!event?.id) {
-      throw new AppError("BOOKING_FAILED", "Falha ao reservar sala.", 500);
+    if (lastError) {
+      throw lastError;
     }
 
-    return { eventId: event.id };
+    throw new AppError("BOOKING_FAILED", "Falha ao reservar sala.", 500);
+  }
+
+  private throwIfRoomUnavailable(error: unknown): void {
+    const graphError = error as {
+      statusCode?: number;
+      status?: number;
+      message?: string;
+      body?: { error?: { message?: string; code?: string } };
+    } | null;
+    const statusCode = graphError?.statusCode ?? graphError?.status;
+    const message = (
+      graphError?.body?.error?.message ??
+      graphError?.message ??
+      ""
+    ).toLowerCase();
+
+    const roomBusy =
+      statusCode === 409 ||
+      /not available|indispon[ií]vel|unavailable|scheduling conflict|conflito/.test(message);
+
+    if (roomBusy) {
+      throw new AppError(
+        "ROOM_CONFLICT",
+        "A sala selecionada não está disponível neste horário.",
+        409,
+      );
+    }
   }
 
   async listBookings(tenant: Tenant, input: { start: string; end: string }): Promise<Booking[]> {
@@ -384,65 +447,296 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
       return [];
     }
 
+    const graphStart = this.toGraphLocalDateTime(input.start);
+    const graphEnd = this.normalizeEndOfDayBoundary(this.toGraphLocalDateTime(input.end));
+
     const bookingsByRoom = await Promise.all(
       rooms.map(async (room) => {
         const events = (await this.withRetry(() =>
           client
             .api(
               `/users/${encodeURIComponent(room.email)}/calendarView` +
-                `?startDateTime=${encodeURIComponent(input.start)}` +
-                `&endDateTime=${encodeURIComponent(input.end)}` +
+                `?startDateTime=${encodeURIComponent(graphStart)}` +
+                `&endDateTime=${encodeURIComponent(graphEnd)}` +
                 `&$top=50`,
             )
             .header("Prefer", `outlook.timezone="${this.graphTimeZone}"`)
-            .select("id,subject,start,end,organizer")
+            .select("id,subject,categories,start,end,organizer")
             .get(),
         )) as GraphCalendarEventResponse;
 
         return (events.value ?? [])
           .filter((event) => Boolean(event.id && event.start?.dateTime && event.end?.dateTime))
-          .map((event) => {
-            const organizer = event.organizer?.emailAddress?.name ?? event.organizer?.emailAddress?.address;
-            return {
-              eventId: event.id,
-              roomEmail: room.email,
-              roomName: room.name,
-              title: event.subject ?? "(Sem titulo)",
-              start: event.start?.dateTime
-                ? this.normalizeGraphDateTime(event.start.dateTime, event.start.timeZone)
-                : input.start,
-              end: event.end?.dateTime
-                ? this.normalizeGraphDateTime(event.end.dateTime, event.end.timeZone)
-                : input.end,
-              ...(organizer ? { organizer } : {}),
-            };
-          });
+          .map((event) =>
+            this.mapEventToBooking(event, room.email, room.name, input.start, input.end),
+          );
       }),
     );
 
     return bookingsByRoom.flat().sort((a, b) => a.start.localeCompare(b.start));
   }
 
-  async cancelBooking(tenant: Tenant, eventId: string): Promise<void> {
+  async getBooking(
+    tenant: Tenant,
+    eventId: string,
+    requesterEmail?: string,
+    fallbackRoomEmail?: string,
+  ): Promise<Booking | null> {
     const client = this.graphFactory.create(tenant);
     const rooms = await this.listRooms(tenant);
+    const mailboxes = [
+      ...(requesterEmail?.includes("@") ? [requesterEmail.trim().toLowerCase()] : []),
+      ...rooms.map((room) => room.email),
+    ];
+    const uniqueMailboxes = Array.from(new Set(mailboxes));
+    const eventSelect = "id,subject,categories,start,end,organizer,location,attendees";
 
-    for (const room of rooms) {
+    for (const mailbox of uniqueMailboxes) {
       try {
-        await this.withRetry(() =>
-          client.api(`/users/${encodeURIComponent(room.email)}/events/${encodeURIComponent(eventId)}`).delete(),
+        const event = (await this.withRetry(() =>
+          client
+            .api(`/users/${encodeURIComponent(mailbox)}/events/${encodeURIComponent(eventId)}`)
+            .select(eventSelect)
+            .get(),
+        )) as GraphCalendarEvent;
+
+        if (!event?.id || !event.start?.dateTime || !event.end?.dateTime) {
+          continue;
+        }
+
+        const room =
+          this.resolveRoomForEvent(event, rooms, mailbox) ??
+          this.resolveFallbackRoom(rooms, fallbackRoomEmail);
+        if (!room) continue;
+
+        return this.mapEventToBooking(
+          event,
+          room.roomEmail,
+          room.roomName,
+          event.start.dateTime,
+          event.end.dateTime,
         );
-        return;
       } catch (error: unknown) {
         const statusCode = (error as { statusCode?: number; status?: number } | null)?.statusCode
           ?? (error as { statusCode?: number; status?: number } | null)?.status;
         if (statusCode === 404 || statusCode === 400) {
           continue;
         }
+        throw error;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveRoomForEvent(
+    event: GraphCalendarEvent,
+    rooms: Room[],
+    mailboxEmail: string,
+  ): { roomEmail: string; roomName: string } | null {
+    const roomByMailbox = rooms.find((r) => r.email.toLowerCase() === mailboxEmail.toLowerCase());
+    if (roomByMailbox) {
+      return { roomEmail: roomByMailbox.email, roomName: roomByMailbox.name };
+    }
+
+    const location = event.location?.displayName?.trim();
+    if (location) {
+      const byEmail = rooms.find((r) => r.email.toLowerCase() === location.toLowerCase());
+      if (byEmail) {
+        return { roomEmail: byEmail.email, roomName: byEmail.name };
+      }
+      const byName = rooms.find((r) => r.name.toLowerCase() === location.toLowerCase());
+      if (byName) {
+        return { roomEmail: byName.email, roomName: byName.name };
+      }
+      if (location.includes("@")) {
+        return { roomEmail: location, roomName: location };
+      }
+    }
+
+    const resourceAttendee = event.attendees?.find((attendee) => attendee.type === "resource");
+    const resourceEmail = resourceAttendee?.emailAddress?.address?.trim();
+    if (resourceEmail?.includes("@")) {
+      const room = rooms.find((r) => r.email.toLowerCase() === resourceEmail.toLowerCase());
+      return { roomEmail: resourceEmail, roomName: room?.name ?? resourceEmail };
+    }
+
+    return null;
+  }
+
+  private resolveFallbackRoom(
+    rooms: Room[],
+    fallbackRoomEmail?: string,
+  ): { roomEmail: string; roomName: string } | null {
+    if (!fallbackRoomEmail?.includes("@")) return null;
+    const normalized = fallbackRoomEmail.trim().toLowerCase();
+    const room = rooms.find((r) => r.email.toLowerCase() === normalized);
+    if (room) {
+      return { roomEmail: room.email, roomName: room.name };
+    }
+    return { roomEmail: fallbackRoomEmail.trim(), roomName: fallbackRoomEmail.trim() };
+  }
+
+  async markBookingRequiresCheckIn(tenant: Tenant, eventId: string, requesterEmail?: string): Promise<void> {
+    await this.addCategoryToBooking(tenant, eventId, CHECKIN_CATEGORY_REQUIRE, requesterEmail);
+  }
+
+  async checkInBooking(tenant: Tenant, eventId: string, requesterEmail?: string): Promise<void> {
+    await this.addCategoryToBooking(tenant, eventId, CHECKIN_CATEGORY_CHECKED_IN, requesterEmail);
+  }
+
+  async cancelBooking(
+    tenant: Tenant,
+    eventId: string,
+    options?: {
+      requesterEmail?: string;
+      roomEmail?: string;
+      start?: string;
+      end?: string;
+      title?: string;
+    },
+  ): Promise<void> {
+    const client = this.graphFactory.create(tenant);
+    const rooms = await this.listRooms(tenant);
+    const booking = await this.getBooking(
+      tenant,
+      eventId,
+      options?.requesterEmail,
+      options?.roomEmail,
+    );
+    const mailboxes = this.buildCancelMailboxes(
+      booking,
+      options?.requesterEmail,
+      options?.roomEmail,
+      rooms,
+    );
+
+    for (const mailbox of mailboxes) {
+      if (await this.tryDeleteEvent(client, mailbox, eventId)) {
+        return;
+      }
+    }
+
+    const start = booking?.start ?? options?.start;
+    const end = booking?.end ?? options?.end;
+    const title = booking?.title ?? options?.title;
+
+    if (start && end) {
+      for (const mailbox of mailboxes) {
+        const resolvedId = await this.findEventIdInCalendarView(client, mailbox, start, end, title);
+        if (resolvedId && (await this.tryDeleteEvent(client, mailbox, resolvedId))) {
+          return;
+        }
       }
     }
 
     throw new AppError("BOOKING_NOT_FOUND", "Reserva nao encontrada para cancelamento.", 404);
+  }
+
+  private buildCancelMailboxes(
+    booking: Booking | null,
+    requesterEmail?: string,
+    fallbackRoomEmail?: string,
+    rooms: Room[] = [],
+  ): string[] {
+    const mailboxes: string[] = [];
+
+    if (booking?.organizer?.includes("@")) {
+      mailboxes.push(booking.organizer.trim().toLowerCase());
+    }
+    if (requesterEmail?.includes("@")) {
+      mailboxes.push(requesterEmail.trim().toLowerCase());
+    }
+    if (booking?.roomEmail?.includes("@")) {
+      mailboxes.push(booking.roomEmail.trim().toLowerCase());
+    }
+    if (fallbackRoomEmail?.includes("@")) {
+      mailboxes.push(fallbackRoomEmail.trim().toLowerCase());
+    }
+    for (const room of rooms) {
+      mailboxes.push(room.email.trim().toLowerCase());
+    }
+
+    return Array.from(new Set(mailboxes));
+  }
+
+  private async tryDeleteEvent(
+    client: ReturnType<GraphClientFactory["create"]>,
+    mailbox: string,
+    eventId: string,
+  ): Promise<boolean> {
+    try {
+      await this.withRetry(() =>
+        client
+          .api(`/users/${encodeURIComponent(mailbox)}/events/${encodeURIComponent(eventId)}`)
+          .delete(),
+      );
+      return true;
+    } catch (error: unknown) {
+      const statusCode = (error as { statusCode?: number; status?: number } | null)?.statusCode
+        ?? (error as { statusCode?: number; status?: number } | null)?.status;
+      if (statusCode === 404 || statusCode === 400) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private async findEventIdInCalendarView(
+    client: ReturnType<GraphClientFactory["create"]>,
+    mailbox: string,
+    start: string,
+    end: string,
+    title?: string,
+  ): Promise<string | null> {
+    const targetStartMs = Date.parse(start);
+    if (Number.isNaN(targetStartMs)) return null;
+
+    const graphStart = this.toGraphLocalDateTime(start);
+    const graphEnd = this.normalizeEndOfDayBoundary(this.toGraphLocalDateTime(end));
+    const wantedTitle = title?.trim().toLowerCase();
+
+    try {
+      const response = (await this.withRetry(() =>
+        client
+          .api(
+            `/users/${encodeURIComponent(mailbox)}/calendarView` +
+              `?startDateTime=${encodeURIComponent(graphStart)}` +
+              `&endDateTime=${encodeURIComponent(graphEnd)}` +
+              `&$top=50`,
+          )
+          .header("Prefer", `outlook.timezone="${this.graphTimeZone}"`)
+          .select("id,subject,start")
+          .get(),
+      )) as GraphCalendarEventResponse;
+
+      for (const event of response.value ?? []) {
+        if (!event.id || !event.start?.dateTime) continue;
+
+        const eventStart = this.normalizeGraphDateTime(event.start.dateTime, event.start.timeZone);
+        const eventStartMs = Date.parse(eventStart);
+        if (Number.isNaN(eventStartMs)) continue;
+        if (Math.abs(eventStartMs - targetStartMs) > 120_000) continue;
+
+        if (wantedTitle) {
+          const subject = event.subject?.trim().toLowerCase() ?? "";
+          if (subject && !subject.includes(wantedTitle) && !wantedTitle.includes(subject)) {
+            continue;
+          }
+        }
+
+        return event.id;
+      }
+    } catch (error: unknown) {
+      const statusCode = (error as { statusCode?: number; status?: number } | null)?.statusCode
+        ?? (error as { statusCode?: number; status?: number } | null)?.status;
+      if (statusCode === 404 || statusCode === 400) {
+        return null;
+      }
+      throw error;
+    }
+
+    return null;
   }
 
   async searchDirectoryUsers(tenant: Tenant, query: string): Promise<DirectoryUser[]> {
@@ -484,5 +778,77 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
     }
 
     return Array.from(uniqueByEmail.values());
+  }
+
+  private mapEventToBooking(
+    event: GraphCalendarEvent,
+    roomEmail: string,
+    roomName: string,
+    fallbackStart: string,
+    fallbackEnd: string,
+  ): Booking {
+    const organizer = event.organizer?.emailAddress?.address ?? event.organizer?.emailAddress?.name;
+    const flags = mapBookingCheckInFlags(event.categories);
+    return {
+      eventId: event.id,
+      roomEmail,
+      roomName,
+      title: event.subject ?? "(Sem titulo)",
+      start: event.start?.dateTime
+        ? this.normalizeGraphDateTime(event.start.dateTime, event.start.timeZone)
+        : fallbackStart,
+      end: event.end?.dateTime
+        ? this.normalizeGraphDateTime(event.end.dateTime, event.end.timeZone)
+        : fallbackEnd,
+      ...(organizer ? { organizer } : {}),
+      ...flags,
+    };
+  }
+
+  private async addCategoryToBooking(
+    tenant: Tenant,
+    eventId: string,
+    category: string,
+    requesterEmail?: string,
+  ): Promise<void> {
+    const client = this.graphFactory.create(tenant);
+    const rooms = await this.listRooms(tenant);
+    const mailboxes = [
+      ...(requesterEmail?.includes("@") ? [requesterEmail.trim().toLowerCase()] : []),
+      ...rooms.map((room) => room.email),
+    ];
+    const uniqueMailboxes = Array.from(new Set(mailboxes));
+
+    for (const mailbox of uniqueMailboxes) {
+      try {
+        const event = (await this.withRetry(() =>
+          client
+            .api(`/users/${encodeURIComponent(mailbox)}/events/${encodeURIComponent(eventId)}`)
+            .select("categories")
+            .get(),
+        )) as { categories?: string[] };
+
+        const current = event.categories ?? [];
+        if (current.includes(category)) {
+          return;
+        }
+
+        await this.withRetry(() =>
+          client
+            .api(`/users/${encodeURIComponent(mailbox)}/events/${encodeURIComponent(eventId)}`)
+            .patch({ categories: [...current, category] }),
+        );
+        return;
+      } catch (error: unknown) {
+        const statusCode = (error as { statusCode?: number; status?: number } | null)?.statusCode
+          ?? (error as { statusCode?: number; status?: number } | null)?.status;
+        if (statusCode === 404 || statusCode === 400) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new AppError("BOOKING_NOT_FOUND", "Reserva nao encontrada.", 404);
   }
 }

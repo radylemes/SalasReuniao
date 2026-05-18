@@ -16,6 +16,9 @@ export interface RoomSchedule {
   availabilityView?: string;
   scheduleItems: ScheduleItem[];
   isAvailable: boolean;
+  /** Início da janela usada no getSchedule (horário local Graph, ex. 2026-05-16T18:30:00). */
+  scheduleGraphStart?: string;
+  availabilityViewIntervalMinutes?: number;
 }
 
 export interface AvailabilityEntity {
@@ -39,6 +42,7 @@ export interface BookRoomInput {
   end: string;
   requesterEmail: string;
   participants: string[];
+  requireCheckIn?: boolean;
 }
 
 export interface Booking {
@@ -49,6 +53,8 @@ export interface Booking {
   start: string;
   end: string;
   organizer?: string;
+  requiresCheckIn?: boolean;
+  checkedIn?: boolean;
 }
 
 export interface DirectoryUser {

@@ -26,6 +26,8 @@ export interface BookingView {
   startTime: string;
   endTime: string;
   organizer?: string;
+  requiresCheckIn?: boolean;
+  checkedIn?: boolean;
 }
 
 export interface BookingSubmitPayload {
@@ -34,4 +36,5 @@ export interface BookingSubmitPayload {
   endTime: string;
   requesterEmail: string;
   participants: string[];
+  allowRequesterConflict?: boolean;
 }
