@@ -101,7 +101,12 @@ export function buildApiRoutes(
       throw new AppError("INVALID_ROOM_EMAIL", "E-mail da sala invalido.", 400);
     }
     const payload = kioskSettingsSchema.parse(req.body);
-    await saveRoomKioskSettingsUseCase.execute(req.localidade ?? "", roomEmail, payload);
+    await saveRoomKioskSettingsUseCase.execute(req.localidade ?? "", roomEmail, {
+      checkInModeEnabled: payload.checkInModeEnabled,
+      ...(payload.checkInGraceMinutes !== undefined && {
+        checkInGraceMinutes: payload.checkInGraceMinutes,
+      }),
+    });
     res.json({ localidade: req.localidade, roomEmail, ...payload });
   });
 
@@ -179,7 +184,10 @@ export function buildApiRoutes(
         ? req.query.roomEmail.trim()
         : undefined;
 
-    await checkInBookingUseCase.execute(req.tenant, eventId, { requesterEmail: organizer, roomEmail });
+    await checkInBookingUseCase.execute(req.tenant, eventId, {
+      ...(organizer !== undefined && { requesterEmail: organizer }),
+      ...(roomEmail !== undefined && { roomEmail }),
+    });
     res.status(204).send();
   });
 
@@ -204,11 +212,11 @@ export function buildApiRoutes(
     const title = typeof req.query.title === "string" ? req.query.title.trim() : undefined;
 
     await cancelBookingUseCase.execute(req.tenant, eventId, {
-      requesterEmail: organizer,
-      roomEmail,
-      start,
-      end,
-      title,
+      ...(organizer !== undefined && { requesterEmail: organizer }),
+      ...(roomEmail !== undefined && { roomEmail }),
+      ...(start !== undefined && { start }),
+      ...(end !== undefined && { end }),
+      ...(title !== undefined && { title }),
     });
     res.status(204).send();
   });

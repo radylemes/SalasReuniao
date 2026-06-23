@@ -37,8 +37,9 @@ export class ProcessNoShowBookingsUseCase {
         if (Number.isNaN(startMs)) continue;
         if (now.getTime() < startMs + graceMs) continue;
 
+        const requesterEmail = booking.organizer?.includes("@") ? booking.organizer : undefined;
         await this.graphGateway.cancelBooking(tenant, booking.eventId, {
-          requesterEmail: booking.organizer?.includes("@") ? booking.organizer : undefined,
+          ...(requesterEmail !== undefined && { requesterEmail }),
           roomEmail: booking.roomEmail,
           start: booking.start,
           end: booking.end,
