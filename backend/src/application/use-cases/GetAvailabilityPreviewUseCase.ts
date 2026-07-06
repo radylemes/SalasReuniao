@@ -1,5 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
 import { GraphRoomsGateway } from "../../domain/contracts/GraphRoomsGateway";
 import { TenantRepository } from "../../domain/contracts/TenantRepository";
 import { UiConfigRepository } from "../../domain/contracts/UiConfigRepository";
@@ -9,43 +7,12 @@ import { resolveApiLocalidade } from "../../domain/uiConfigResolver";
 import { isBusyInAvailabilityView, isBusyScheduleStatus, overlapsInterval } from "../../domain/scheduleOverlap";
 import { Booking, ScheduleItem } from "../../domain/entities/Room";
 
-// Raiz do projeto: sobe de src/application/use-cases -> ../../../ = backend; ../../../../ = raiz (SalasReuniao)
-const PREVIEW_DEBUG_LOG = path.resolve(__dirname, "..", "..", "..", "..", "preview-debug.log");
-
-function debugLog(message: string, data?: object): void {
-  const line = data ? `${message} ${JSON.stringify(data, null, 2)}` : message;
-  const full = `[${new Date().toISOString()}] ${line}\n`;
-  try {
-    fs.appendFileSync(PREVIEW_DEBUG_LOG, full);
-  } catch (err) {
-    console.error("[preview] Erro ao gravar log em", PREVIEW_DEBUG_LOG, err);
-  }
-  console.log("[preview]", message, data ?? "");
-}
-
 export class GetAvailabilityPreviewUseCase {
   constructor(
     private readonly graphGateway: GraphRoomsGateway,
     private readonly tenantRepository: TenantRepository,
     private readonly uiConfigRepository: UiConfigRepository,
   ) {}
-
-  /** Log de debug: detalhes do overlap para um item (usar apenas para diagnóstico). */
-  private logOverlapCheck(
-    requestStart: string,
-    requestEnd: string,
-    itemStart: string,
-    itemEnd: string,
-    status: string,
-    overlaps: boolean,
-  ): void {
-    debugLog("item", {
-      itemStart,
-      itemEnd,
-      status,
-      overlaps,
-    });
-  }
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
@@ -88,7 +55,6 @@ export class GetAvailabilityPreviewUseCase {
     schedules: RoomSchedule[],
     requestStart: string,
     requestEnd: string,
-    logDebug = false,
     roomBookings: Booking[] = [],
   ): AvailabilityEntity {
     const normalizedEmail = this.normalizeEmail(email);
@@ -96,18 +62,9 @@ export class GetAvailabilityPreviewUseCase {
     const schedule = byEmail.get(normalizedEmail) ?? schedules[expectedIndex];
     const items = schedule?.scheduleItems ?? [];
     const nonFree = this.mergeBusyItems(items, roomBookings);
-    if (logDebug && nonFree.length > 0) {
-      debugLog("Sala: " + normalizedEmail);
-      debugLog("Request", { requestStart, requestEnd });
-      debugLog("Itens do calendário (não free): " + nonFree.length);
-    }
-    const conflicts = nonFree.filter((item) => {
-      const overlaps = overlapsInterval(requestStart, requestEnd, item.start, item.end);
-      if (logDebug) {
-        this.logOverlapCheck(requestStart, requestEnd, item.start, item.end, item.status, overlaps);
-      }
-      return overlaps;
-    });
+    const conflicts = nonFree.filter((item) =>
+      overlapsInterval(requestStart, requestEnd, item.start, item.end),
+    );
 
     const graphWindowStart =
       schedule?.scheduleGraphStart && schedule.availabilityViewIntervalMinutes
@@ -125,16 +82,8 @@ export class GetAvailabilityPreviewUseCase {
         schedule.availabilityViewIntervalMinutes,
       );
 
-    if (busyInAvailabilityView && logDebug) {
-      debugLog("availabilityView indica ocupado no intervalo pedido");
-    }
-
     const availabilityStatus: AvailabilityEntity["availabilityStatus"] =
       !schedule ? "unknown" : conflicts.length > 0 || busyInAvailabilityView ? "busy" : "available";
-    if (logDebug) {
-      debugLog("Resultado", { conflictsCount: conflicts.length, availabilityStatus });
-      debugLog("---");
-    }
     return {
       email: normalizedEmail,
       isAvailable: availabilityStatus === "available",
@@ -150,12 +99,6 @@ export class GetAvailabilityPreviewUseCase {
     const normalizedRoomEmail = this.normalizeEmail(input.roomEmail);
     const participants = Array.from(new Set(input.participants.map((email) => this.normalizeEmail(email))));
     const uiConfig = await this.uiConfigRepository.get();
-    debugLog("Arquivo de log: " + PREVIEW_DEBUG_LOG);
-    debugLog("Prévia solicitada", {
-      roomEmail: normalizedRoomEmail,
-      start: input.start,
-      end: input.end,
-    });
     const scheduleWindowStart = this.padScheduleWindowStart(input.start);
     const [roomSchedule, roomBookings] = await Promise.all([
       this.graphGateway.getSchedule(tenant, [normalizedRoomEmail], scheduleWindowStart, input.end),
@@ -167,7 +110,6 @@ export class GetAvailabilityPreviewUseCase {
       roomSchedule,
       input.start,
       input.end,
-      true,
       roomBookings.filter((booking) => this.normalizeEmail(booking.roomEmail) === normalizedRoomEmail),
     );
 

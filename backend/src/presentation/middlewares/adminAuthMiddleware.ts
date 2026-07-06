@@ -1,5 +1,13 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextFunction, Request, Response } from "express";
 import { AppError } from "../../application/errors/AppError";
+
+function keysMatch(provided: string, configured: string): boolean {
+  if (provided.length !== configured.length) {
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(provided), Buffer.from(configured));
+}
 
 export function adminAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
   const configuredKey = process.env.ADMIN_API_KEY?.trim();
@@ -9,7 +17,7 @@ export function adminAuthMiddleware(req: Request, _res: Response, next: NextFunc
   }
 
   const providedKey = req.header("x-admin-key")?.trim();
-  if (!providedKey || providedKey !== configuredKey) {
+  if (!providedKey || !keysMatch(providedKey, configuredKey)) {
     next(new AppError("ADMIN_UNAUTHORIZED", "Chave de administração inválida.", 401));
     return;
   }

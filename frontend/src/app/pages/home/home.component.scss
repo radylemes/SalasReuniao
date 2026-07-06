@@ -68,6 +68,7 @@
 
 .locality-logo {
   flex-shrink: 0;
+  max-width: min(280px, 45vw);
 }
 
 .locality-logo-img {

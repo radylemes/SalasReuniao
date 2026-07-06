@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import path from "node:path";
 import { EnvTenantRepository } from "./infrastructure/repositories/EnvTenantRepository";
 import { FileKioskSettingsRepository } from "./infrastructure/repositories/FileKioskSettingsRepository";
@@ -32,8 +34,14 @@ dotenv.config();
 
 const NO_SHOW_INTERVAL_MS = 60_000;
 
+const apiRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+});
+
 export function createApp() {
   const app = express();
+  app.use(helmet());
   const tenantRepository = new EnvTenantRepository();
   const kioskSettingsRepository = new FileKioskSettingsRepository();
   const uiConfigRepository = new FileUiConfigRepository();
@@ -73,7 +81,17 @@ export function createApp() {
   );
   const tabLogoUseCases = new TabLogoUseCases(uiConfigRepository);
 
-  app.use(cors());
+  const corsAllowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (corsAllowedOrigins?.length) {
+    app.use(cors({ origin: corsAllowedOrigins }));
+  } else {
+    console.warn(
+      "[cors] CORS_ALLOWED_ORIGINS não definido; aceitando qualquer origem. Configure a variável para restringir em produção.",
+    );
+    app.use(cors());
+  }
   app.use(express.json({ limit: "1mb" }));
   app.use(correlationIdMiddleware);
 
@@ -85,6 +103,7 @@ export function createApp() {
     });
   });
 
+  app.use("/api", apiRateLimiter);
   app.use("/api/logos", express.static(path.join(process.cwd(), "data", "logos")));
 
   app.use("/api", buildPublicUiConfigRoute(getUiConfigUseCase));

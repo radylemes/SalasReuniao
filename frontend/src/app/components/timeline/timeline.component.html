@@ -1,12 +1,12 @@
-<div class="time-grid-section">
-  @for (period of slotsByPeriod; track period.label) {
+<div class="timeline-grid">
+  @for (period of displayPeriods; track period.label) {
     <div class="period-separator">{{ period.label }}</div>
     <div class="time-slots" [style.--columns]="columns">
-      @for (slot of period.slots; track slot.startTime) {
+      @for (slot of period.slots; track slot.startTime + ':' + slot.gridColumnStart) {
         <button
           type="button"
           [class]="getSlotClass(slot)"
-          [style.--span]="slot.span"
+          [style.grid-column]="gridColumnStyle(slot)"
           [disabled]="isSlotDisabled(slot)"
           (click)="onSlotClick(slot)"
           [title]="isPastSlot(slot) ? slot.displayTime + ' — horário já passado' : slot.status === 'occupied' ? 'Reservado por: ' + (slot.bookedBy || 'Nao identificado') : slot.displayTime + ' - ' + getSlotDurationLabel(slot)"

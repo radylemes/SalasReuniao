@@ -74,6 +74,11 @@ type GraphUsersResponse = {
   }>;
 };
 
+function extractGraphErrorStatusCode(error: unknown): number | undefined {
+  const graphError = error as { statusCode?: number; status?: number } | null;
+  return graphError?.statusCode ?? graphError?.status;
+}
+
 export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
   constructor(
     private readonly graphFactory: GraphClientFactory,
@@ -394,8 +399,7 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
       }
     } catch (requesterError: unknown) {
       this.throwIfRoomUnavailable(requesterError);
-      const statusCode = (requesterError as { statusCode?: number; status?: number } | null)?.statusCode
-        ?? (requesterError as { statusCode?: number; status?: number } | null)?.status;
+      const statusCode = extractGraphErrorStatusCode(requesterError);
       if (statusCode !== 400 && statusCode !== 403 && statusCode !== 404) {
         throw requesterError;
       }
@@ -523,12 +527,10 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
 
   private throwIfRoomUnavailable(error: unknown): void {
     const graphError = error as {
-      statusCode?: number;
-      status?: number;
       message?: string;
       body?: { error?: { message?: string; code?: string } };
     } | null;
-    const statusCode = graphError?.statusCode ?? graphError?.status;
+    const statusCode = extractGraphErrorStatusCode(error);
     const message = (
       graphError?.body?.error?.message ??
       graphError?.message ??
@@ -675,8 +677,7 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
           event.end.dateTime,
         );
       } catch (error: unknown) {
-        const statusCode = (error as { statusCode?: number; status?: number } | null)?.statusCode
-          ?? (error as { statusCode?: number; status?: number } | null)?.status;
+        const statusCode = extractGraphErrorStatusCode(error);
         if (statusCode === 404 || statusCode === 400) {
           continue;
         }
@@ -839,8 +840,7 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
       );
       return true;
     } catch (error: unknown) {
-      const statusCode = (error as { statusCode?: number; status?: number } | null)?.statusCode
-        ?? (error as { statusCode?: number; status?: number } | null)?.status;
+      const statusCode = extractGraphErrorStatusCode(error);
       if (statusCode === 404 || statusCode === 400) {
         return false;
       }
@@ -889,8 +889,7 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
         return event.id;
       }
     } catch (error: unknown) {
-      const statusCode = (error as { statusCode?: number; status?: number } | null)?.statusCode
-        ?? (error as { statusCode?: number; status?: number } | null)?.status;
+      const statusCode = extractGraphErrorStatusCode(error);
       if (statusCode === 404 || statusCode === 400) {
         return null;
       }
@@ -1007,8 +1006,7 @@ export class MicrosoftGraphRoomsGateway implements GraphRoomsGateway {
         );
         return;
       } catch (error: unknown) {
-        const statusCode = (error as { statusCode?: number; status?: number } | null)?.statusCode
-          ?? (error as { statusCode?: number; status?: number } | null)?.status;
+        const statusCode = extractGraphErrorStatusCode(error);
         if (statusCode === 404 || statusCode === 400) {
           continue;
         }

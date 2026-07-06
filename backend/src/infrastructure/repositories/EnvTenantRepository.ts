@@ -47,6 +47,34 @@ export class EnvTenantRepository implements TenantRepository {
     }
   }
 
+  static assertAtLeastOneTenantConfigured(): void {
+    let configuredCount = 0;
+    const incompleteTenants: string[] = [];
+
+    for (const definition of TENANT_DEFINITIONS) {
+      const tenantId = process.env[definition.tenantIdEnv]?.trim();
+      const clientId = process.env[definition.clientIdEnv]?.trim();
+      const clientSecret = process.env[definition.clientSecretEnv]?.trim();
+
+      if (tenantId && clientId && clientSecret) {
+        configuredCount += 1;
+        continue;
+      }
+
+      const missing: string[] = [];
+      if (!tenantId) missing.push(definition.tenantIdEnv);
+      if (!clientId) missing.push(definition.clientIdEnv);
+      if (!clientSecret) missing.push(definition.clientSecretEnv);
+      incompleteTenants.push(`${definition.localidade}: ${missing.join(", ")}`);
+    }
+
+    if (configuredCount === 0) {
+      throw new Error(
+        `Nenhum tenant Microsoft configurado. Configure ao menos um tenant completo. Tenants incompletos:\n${incompleteTenants.map((line) => `- ${line}`).join("\n")}`,
+      );
+    }
+  }
+
   async findByLocalidade(localidade: Localidade): Promise<Tenant | null> {
     const key = this.normalizeLocalidade(localidade);
     return this.tenantsByLocalidade.get(key) ?? null;

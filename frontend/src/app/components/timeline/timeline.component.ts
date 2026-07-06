@@ -1,14 +1,17 @@
 import {
+  ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
   EventEmitter,
   HostListener,
   Inject,
   Input,
+  OnChanges,
   OnDestroy,
   OnInit,
   Output,
   PLATFORM_ID,
+  SimpleChanges,
 } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { TimeSlotView } from '../../models/ui.models';
@@ -17,6 +20,8 @@ import { RoomScheduleService } from '../../services/room-schedule.service';
 export interface DisplaySlot extends TimeSlotView {
   span: number;
   displayTime: string;
+  /** Coluna inicial (1-based) na grelha CSS. */
+  gridColumnStart: number;
 }
 
 export interface PeriodGroup {
@@ -29,8 +34,9 @@ export interface PeriodGroup {
   standalone: true,
   templateUrl: './timeline.component.html',
   styleUrl: './timeline.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TimelineComponent implements OnInit, OnDestroy {
+export class TimelineComponent implements OnInit, OnChanges, OnDestroy {
   @Input({ required: true }) slots: TimeSlotView[] = [];
   /** Se definido, só estes slots (e o estado occupied) determinam clique; a grelha usa sempre `slots`. */
   @Input() bookableSlots: TimeSlotView[] | null = null;
@@ -41,7 +47,10 @@ export class TimelineComponent implements OnInit, OnDestroy {
   @Output() slotSelect = new EventEmitter<TimeSlotView>();
 
   columns = 6;
+  displayPeriods: PeriodGroup[] = [];
+
   private pastRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     @Inject(PLATFORM_ID) private platformId: Object,
@@ -49,10 +58,17 @@ export class TimelineComponent implements OnInit, OnDestroy {
     private readonly cdr: ChangeDetectorRef,
   ) {}
 
-  ngOnInit() {
+  ngOnInit(): void {
     if (isPlatformBrowser(this.platformId)) {
       this.updateColumns(window.innerWidth);
       this.pastRefreshTimer = setInterval(() => this.cdr.markForCheck(), 60_000);
+    }
+    this.rebuildDisplay();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['slots'] || changes['filterOnlyAvailable']) {
+      this.rebuildDisplay();
     }
   }
 
@@ -61,16 +77,28 @@ export class TimelineComponent implements OnInit, OnDestroy {
       clearInterval(this.pastRefreshTimer);
       this.pastRefreshTimer = null;
     }
-  }
-
-  @HostListener('window:resize', ['$event'])
-  onResize(event: any) {
-    if (isPlatformBrowser(this.platformId)) {
-      this.updateColumns(event.target.innerWidth);
+    if (this.resizeTimer) {
+      clearTimeout(this.resizeTimer);
+      this.resizeTimer = null;
     }
   }
 
-  private updateColumns(width: number) {
+  @HostListener('window:resize')
+  onResize(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
+
+    if (this.resizeTimer) clearTimeout(this.resizeTimer);
+    this.resizeTimer = setTimeout(() => {
+      const previous = this.columns;
+      this.updateColumns(window.innerWidth);
+      if (previous !== this.columns) {
+        this.rebuildDisplay();
+      }
+      this.cdr.markForCheck();
+    }, 150);
+  }
+
+  private updateColumns(width: number): void {
     if (width <= 480) {
       this.columns = 2;
     } else if (width <= 768) {
@@ -80,12 +108,12 @@ export class TimelineComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Agrupa slots por período: Madrugada 00:00-06:00, Manhã 06:00-12:00, Tarde 12:00-18:00, Noite 18:00-24:00 */
-  get slotsByPeriod(): PeriodGroup[] {
+  private rebuildDisplay(): void {
     const madrugada: TimeSlotView[] = [];
     const manha: TimeSlotView[] = [];
     const tarde: TimeSlotView[] = [];
     const noite: TimeSlotView[] = [];
+
     for (const slot of this.slots) {
       if (this.filterOnlyAvailable && slot.status === 'occupied') continue;
       if (slot.startMinute < 360) madrugada.push(slot);
@@ -93,71 +121,108 @@ export class TimelineComponent implements OnInit, OnDestroy {
       else if (slot.startMinute < 1080) tarde.push(slot);
       else noite.push(slot);
     }
+
     const result: PeriodGroup[] = [];
-    if (madrugada.length) result.push({ label: 'Madrugada (00:00 - 06:00)', slots: this.groupSlots(madrugada) });
-    if (manha.length) result.push({ label: 'Manhã (06:00 - 12:00)', slots: this.groupSlots(manha) });
-    if (tarde.length) result.push({ label: 'Tarde (12:00 - 18:00)', slots: this.groupSlots(tarde) });
-    if (noite.length) result.push({ label: 'Noite (18:00 - 23:59)', slots: this.groupSlots(noite) });
-    return result;
+    if (madrugada.length) {
+      result.push({ label: 'Madrugada (00:00 - 06:00)', slots: this.groupSlots(madrugada) });
+    }
+    if (manha.length) {
+      result.push({ label: 'Manhã (06:00 - 12:00)', slots: this.groupSlots(manha) });
+    }
+    if (tarde.length) {
+      result.push({ label: 'Tarde (12:00 - 18:00)', slots: this.groupSlots(tarde) });
+    }
+    if (noite.length) {
+      result.push({ label: 'Noite (18:00 - 23:59)', slots: this.groupSlots(noite) });
+    }
+
+    this.displayPeriods = result;
   }
 
   private groupSlots(slots: TimeSlotView[]): DisplaySlot[] {
     if (!slots.length) return [];
 
     const displaySlots: DisplaySlot[] = [];
-    let currentGroup: DisplaySlot | null = null;
     let columnInRow = 0;
+    let index = 0;
 
-    const flushGroup = (): void => {
-      if (!currentGroup) return;
-      this.finalizeGroupDisplayTime(currentGroup);
-      const remaining = this.columns - columnInRow;
-      if (currentGroup.span > remaining) {
-        currentGroup.span = remaining;
-      }
-      displaySlots.push(currentGroup);
-      columnInRow += currentGroup.span;
+    while (index < slots.length) {
       if (columnInRow >= this.columns) {
         columnInRow = 0;
       }
-      currentGroup = null;
-    };
 
-    for (const slot of slots) {
-      if (!currentGroup) {
+      const slot = slots[index];
+
+      if (slot.status !== 'occupied') {
+        displaySlots.push({
+          ...slot,
+          span: 1,
+          displayTime: slot.time,
+          gridColumnStart: columnInRow + 1,
+        });
+        columnInRow += 1;
         if (columnInRow >= this.columns) {
           columnInRow = 0;
         }
-        currentGroup = { ...slot, span: 1, displayTime: slot.time };
+        index += 1;
         continue;
       }
 
-      const isContiguous = currentGroup.endMinute === slot.startMinute;
-      const isBothOccupied = currentGroup.status === 'occupied' && slot.status === 'occupied';
-      const isSameBooker = currentGroup.bookedBy === slot.bookedBy && !!currentGroup.bookedBy;
-      const remainingInRow = this.columns - columnInRow;
-      const canExpandInRow = currentGroup.span < remainingInRow;
+      const bookedBy = slot.bookedBy;
+      const runStart = index;
+      index += 1;
 
-      if (isContiguous && isBothOccupied && isSameBooker && canExpandInRow) {
-        currentGroup.endMinute = slot.endMinute;
-        currentGroup.endTime = slot.endTime;
-        currentGroup.span += 1;
-      } else {
-        flushGroup();
+      while (index < slots.length) {
+        const next = slots[index];
+        const previous = slots[index - 1];
+        if (
+          next.status === 'occupied' &&
+          !!bookedBy &&
+          next.bookedBy === bookedBy &&
+          next.startMinute === previous.endMinute
+        ) {
+          index += 1;
+        } else {
+          break;
+        }
+      }
+
+      let runIndex = runStart;
+      while (runIndex < index) {
         if (columnInRow >= this.columns) {
           columnInRow = 0;
         }
-        currentGroup = { ...slot, span: 1, displayTime: slot.time };
+
+        const remaining = this.columns - columnInRow;
+        const chunkSize = Math.min(remaining, index - runIndex);
+        const chunkStart = slots[runIndex];
+        const chunkEnd = slots[runIndex + chunkSize - 1];
+
+        const displaySlot: DisplaySlot = {
+          ...chunkStart,
+          span: chunkSize,
+          endMinute: chunkEnd.endMinute,
+          endTime: chunkEnd.endTime,
+          displayTime: chunkStart.time,
+          gridColumnStart: columnInRow + 1,
+        };
+        this.finalizeGroupDisplayTime(displaySlot);
+        displaySlots.push(displaySlot);
+
+        columnInRow += chunkSize;
+        if (columnInRow >= this.columns) {
+          columnInRow = 0;
+        }
+        runIndex += chunkSize;
       }
     }
 
-    flushGroup();
     return displaySlots;
   }
 
   private finalizeGroupDisplayTime(group: DisplaySlot): void {
     if (group.span > 1) {
-       group.displayTime = `${group.time} - ${this.formatMinutes(group.endMinute)}`;
+      group.displayTime = `${group.time} - ${this.formatMinutes(group.endMinute)}`;
     }
   }
 
@@ -227,5 +292,9 @@ export class TimelineComponent implements OnInit, OnDestroy {
       return '30 min';
     }
     return `${minutes} min`;
+  }
+
+  gridColumnStyle(slot: DisplaySlot): string {
+    return `${slot.gridColumnStart} / span ${slot.span}`;
   }
 }
