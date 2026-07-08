@@ -25,9 +25,22 @@ Configure os tenants diretamente no `.env`:
 
 ## Rotas
 
+Documentacao completa para integracao externa:
+
+- [Guia de integracao](./docs/INTEGRATION.md)
+- [OpenAPI (openapi.yaml)](./docs/openapi.yaml)
+- Swagger UI: `http://localhost:3000/api/docs` (com o servidor em execucao)
+
+Endpoints principais:
+
 - `GET /health`
+- `GET /api/ui-config` (publico)
 - `GET /api/rooms` com `x-localidade`
 - `POST /api/schedule` com `x-localidade`
+- `POST /api/availability/preview` com `x-localidade`
 - `POST /api/book` com `x-localidade`
 - `GET /api/bookings` com `x-localidade`
+- `GET /api/directory/users` com `x-localidade`
+- `POST /api/bookings/:eventId/check-in` com `x-localidade`
 - `DELETE /api/bookings/:eventId` com `x-localidade`
+- `GET/PUT /api/rooms/:roomEmail/kiosk-settings` com `x-localidade`

@@ -29,6 +29,7 @@ import { tenantResolverMiddleware } from "./presentation/middlewares/tenantResol
 import { errorHandler } from "./presentation/middlewares/errorHandler";
 import { correlationIdMiddleware } from "./presentation/middlewares/correlationId";
 import { buildApiRoutes } from "./presentation/routes/apiRoutes";
+import { buildDocsRoutes } from "./presentation/routes/docsRoutes";
 
 dotenv.config();
 
@@ -104,6 +105,7 @@ export function createApp() {
   });
 
   app.use("/api", apiRateLimiter);
+  app.use("/api/docs", buildDocsRoutes());
   app.use("/api/logos", express.static(path.join(process.cwd(), "data", "logos")));
 
   app.use("/api", buildPublicUiConfigRoute(getUiConfigUseCase));

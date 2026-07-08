@@ -18,6 +18,13 @@ Aplicacao com backend `Node.js + Express + TypeScript` e frontend em `Angular` (
 2. Configure os tenants via variaveis de ambiente:
    - `WTORRE_TENANT_ID`, `WTORRE_CLIENT_ID`, `WTORRE_CLIENT_SECRET`
    - `ALLIANZ_TENANT_ID`, `ALLIANZ_CLIENT_ID`, `ALLIANZ_CLIENT_SECRET`
+3. Para integracao de outro site no browser, configure `CORS_ALLOWED_ORIGINS` no `.env` do backend.
+
+## Documentacao da API (integracao externa)
+
+- **Guia de integracao:** [`backend/docs/INTEGRATION.md`](backend/docs/INTEGRATION.md) — CORS, autenticacao, fluxos e exemplos `fetch`/`curl`
+- **Contrato OpenAPI:** [`backend/docs/openapi.yaml`](backend/docs/openapi.yaml)
+- **Swagger UI (interativo):** `http://localhost:3000/api/docs` (com o backend em execucao)
 
 ## Backend
 
@@ -30,11 +37,19 @@ npm run dev
 API sobe em `http://localhost:3000` com endpoints:
 
 - `GET /health`
+- `GET /api/ui-config` (publico)
 - `GET /api/rooms` (header `x-localidade`)
 - `POST /api/schedule` (header `x-localidade`)
+- `POST /api/availability/preview` (header `x-localidade`)
 - `POST /api/book` (header `x-localidade`)
 - `GET /api/bookings` (header `x-localidade`)
+- `GET /api/directory/users` (header `x-localidade`)
+- `POST /api/bookings/:eventId/check-in` (header `x-localidade`)
 - `DELETE /api/bookings/:eventId` (header `x-localidade`)
+- `GET/PUT /api/rooms/:roomEmail/kiosk-settings` (header `x-localidade`)
+- `GET /api/docs` — documentacao Swagger UI
+
+Rotas de administracao (`x-admin-key`): ver [`backend/docs/openapi.yaml`](backend/docs/openapi.yaml).
 
 ### Exemplo de payloads
 

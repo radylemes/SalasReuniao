@@ -1,0 +1,1043 @@
+openapi: 3.0.3
+info:
+  title: Salas de Reunião API
+  description: |
+    API REST para consulta de salas, disponibilidade e reservas via Microsoft Graph (multi-tenant).
+
+    **Autenticação multi-tenant:** a maioria dos endpoints exige o header `x-localidade` (ou query `localidade`)
+    para identificar o tenant Microsoft 365 (`WTorre`, `Allianz`, etc.).
+
+    **Integração externa:** para chamadas a partir de outro site no browser, configure `CORS_ALLOWED_ORIGINS`
+    no servidor. Consulte `backend/docs/INTEGRATION.md` para exemplos práticos.
+  version: 1.0.0
+  contact:
+    name: Real Arenas
+
+servers:
+  - url: http://localhost:3000
+    description: Desenvolvimento local
+  - url: https://salas.allianzparque.com.br
+    description: Produção
+
+tags:
+  - name: Health
+    description: Verificação de disponibilidade
+  - name: UI Config
+    description: Configuração pública da interface
+  - name: Rooms
+    description: Salas e configurações de kiosk
+  - name: Schedule
+    description: Consulta de agenda e disponibilidade
+  - name: Bookings
+    description: Reservas, check-in e cancelamento
+  - name: Directory
+    description: Pesquisa de utilizadores no diretório
+  - name: Admin
+    description: Administração (requer x-admin-key)
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Serviço disponível
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/ui-config:
+    get:
+      tags: [UI Config]
+      summary: Obter configuração da UI
+      description: Endpoint público. Não requer `x-localidade`.
+      operationId: getUiConfig
+      responses:
+        "200":
+          description: Configuração carregada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UiConfigResponse"
+
+  /api/rooms:
+    get:
+      tags: [Rooms]
+      summary: Listar salas
+      operationId: listRooms
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+      responses:
+        "200":
+          description: Lista de salas do tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+
+  /api/rooms/{roomEmail}/kiosk-settings:
+    get:
+      tags: [Rooms]
+      summary: Obter configurações de kiosk da sala
+      operationId: getKioskSettings
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+        - $ref: "#/components/parameters/RoomEmail"
+      responses:
+        "200":
+          description: Configurações da sala
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KioskSettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+    put:
+      tags: [Rooms]
+      summary: Guardar configurações de kiosk da sala
+      operationId: putKioskSettings
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+        - $ref: "#/components/parameters/RoomEmail"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomKioskSettings"
+      responses:
+        "200":
+          description: Configurações guardadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KioskSettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+
+  /api/schedule:
+    post:
+      tags: [Schedule]
+      summary: Consultar agenda de salas
+      operationId: getSchedule
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleRequest"
+      responses:
+        "200":
+          description: Agenda por sala
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+
+  /api/availability/preview:
+    post:
+      tags: [Schedule]
+      summary: Pré-visualizar disponibilidade
+      description: |
+        Verifica disponibilidade da sala e dos participantes no intervalo indicado.
+        Útil antes de criar uma reserva.
+      operationId: previewAvailability
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvailabilityPreviewRequest"
+      responses:
+        "200":
+          description: Pré-visualização de disponibilidade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityPreviewResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+
+  /api/book:
+    post:
+      tags: [Bookings]
+      summary: Criar reserva
+      description: |
+        Cria uma reserva na sala indicada. Conflitos de sala bloqueiam sempre.
+        Conflitos do solicitante ou participantes podem ser ignorados com as flags
+        `allowRequesterConflict` e `allowParticipantConflict`.
+      operationId: bookRoom
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookRequest"
+      responses:
+        "201":
+          description: Reserva criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+        "409":
+          description: Conflito de agenda
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                roomConflict:
+                  value:
+                    code: ROOM_CONFLICT
+                    message: A sala selecionada não está disponível neste horário.
+                    details: null
+                    correlationId: abc-123
+                requesterConflict:
+                  value:
+                    code: REQUESTER_CONFLICT
+                    message: O solicitante já possui compromisso neste horário.
+                    details: null
+                    correlationId: abc-123
+                participantConflict:
+                  value:
+                    code: PARTICIPANT_CONFLICT
+                    message: "A agenda de outro participante está ocupada neste horário: user@tenant.com."
+                    details: null
+                    correlationId: abc-123
+
+  /api/bookings:
+    get:
+      tags: [Bookings]
+      summary: Listar reservas
+      description: |
+        Lista reservas no intervalo indicado. Se `start` e `end` forem omitidos,
+        usa o momento atual até 30 dias à frente.
+      operationId: listBookings
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+        - name: start
+          in: query
+          description: Início do intervalo (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          description: Fim do intervalo (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Lista de reservas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+
+  /api/bookings/{eventId}/check-in:
+    post:
+      tags: [Bookings]
+      summary: Fazer check-in de reserva
+      operationId: checkInBooking
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+        - $ref: "#/components/parameters/EventId"
+        - name: organizer
+          in: query
+          description: E-mail do organizador (opcional, melhora a resolução do evento)
+          schema:
+            type: string
+            format: email
+        - name: roomEmail
+          in: query
+          description: E-mail da sala (opcional)
+          schema:
+            type: string
+            format: email
+      responses:
+        "204":
+          description: Check-in realizado
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Reserva não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Check-in já realizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/bookings/{eventId}:
+    delete:
+      tags: [Bookings]
+      summary: Cancelar reserva
+      operationId: cancelBooking
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+        - $ref: "#/components/parameters/EventId"
+        - name: organizer
+          in: query
+          schema:
+            type: string
+            format: email
+        - name: roomEmail
+          in: query
+          schema:
+            type: string
+            format: email
+        - name: start
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: title
+          in: query
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Reserva cancelada
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Reserva não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/directory/users:
+    get:
+      tags: [Directory]
+      summary: Pesquisar utilizadores no diretório
+      operationId: searchDirectoryUsers
+      parameters:
+        - $ref: "#/components/parameters/LocalidadeHeader"
+        - $ref: "#/components/parameters/LocalidadeQuery"
+        - name: query
+          in: query
+          required: true
+          description: Termo de pesquisa (mínimo 2 caracteres)
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        "200":
+          description: Utilizadores encontrados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DirectoryUsersResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+
+  /api/admin/ui-config:
+    get:
+      tags: [Admin]
+      summary: Obter configuração da UI (admin)
+      description: Endpoint público (não requer x-admin-key).
+      operationId: getAdminUiConfig
+      responses:
+        "200":
+          description: Configuração carregada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UiConfigResponse"
+    put:
+      tags: [Admin]
+      summary: Guardar configuração da UI
+      operationId: saveUiConfig
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UiConfig"
+      responses:
+        "200":
+          description: Configuração guardada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UiConfigResponse"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "503":
+          $ref: "#/components/responses/AdminNotConfigured"
+
+  /api/admin/rooms:
+    get:
+      tags: [Admin]
+      summary: Listar todas as salas (admin)
+      operationId: listAdminRooms
+      security:
+        - AdminKey: []
+      responses:
+        "200":
+          description: Salas de todos os tenants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRoomsResponse"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "503":
+          $ref: "#/components/responses/AdminNotConfigured"
+
+  /api/admin/tabs/{tabId}/logo:
+    post:
+      tags: [Admin]
+      summary: Carregar logo de aba
+      operationId: uploadTabLogo
+      security:
+        - AdminKey: []
+      parameters:
+        - name: tabId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo:
+                  type: string
+                  format: binary
+                  description: Imagem (máx. 512 KB)
+      responses:
+        "200":
+          description: Logo carregado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UiConfigResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: Aba não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          $ref: "#/components/responses/AdminNotConfigured"
+    delete:
+      tags: [Admin]
+      summary: Remover logo de aba
+      operationId: deleteTabLogo
+      security:
+        - AdminKey: []
+      parameters:
+        - name: tabId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Logo removido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UiConfigResponse"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: Aba não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          $ref: "#/components/responses/AdminNotConfigured"
+
+components:
+  securitySchemes:
+    Localidade:
+      type: apiKey
+      in: header
+      name: x-localidade
+      description: Identificador do tenant (ex. WTorre, Allianz)
+    AdminKey:
+      type: apiKey
+      in: header
+      name: x-admin-key
+      description: Chave de administração (variável ADMIN_API_KEY no servidor)
+
+  parameters:
+    LocalidadeHeader:
+      name: x-localidade
+      in: header
+      required: false
+      description: |
+        Identificador do tenant Microsoft 365. Obrigatório se `localidade` não for enviada na query
+        e `DEFAULT_LOCALIDADE` não estiver configurada no servidor.
+      schema:
+        type: string
+        example: WTorre
+    LocalidadeQuery:
+      name: localidade
+      in: query
+      required: false
+      description: Alternativa ao header x-localidade
+      schema:
+        type: string
+        example: WTorre
+    RoomEmail:
+      name: roomEmail
+      in: path
+      required: true
+      description: E-mail da sala (URL-encoded)
+      schema:
+        type: string
+        format: email
+        example: sala-a@wtorre.com.br
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      description: Identificador do evento no Microsoft Graph
+      schema:
+        type: string
+        example: AAMkAGI2...
+
+  responses:
+    BadRequest:
+      description: Pedido inválido ou validação falhou
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          examples:
+            localidadeRequired:
+              value:
+                code: LOCALIDADE_REQUIRED
+                message: Informe a localidade via header x-localidade ou query localidade.
+                details: null
+                correlationId: abc-123
+            validationError:
+              value:
+                code: VALIDATION_ERROR
+                message: "start: Invalid ISO datetime"
+                details: []
+                correlationId: abc-123
+    TenantNotFound:
+      description: Tenant não encontrado para a localidade indicada
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: TENANT_NOT_FOUND
+            message: Tenant nao encontrado para localidade XYZ.
+            details: null
+            correlationId: abc-123
+    AdminUnauthorized:
+      description: Chave de administração inválida
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: ADMIN_UNAUTHORIZED
+            message: Chave de administração inválida.
+            details: null
+            correlationId: abc-123
+    AdminNotConfigured:
+      description: Administração não configurada no servidor
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: ADMIN_NOT_CONFIGURED
+            message: Administração não configurada (ADMIN_API_KEY).
+            details: null
+            correlationId: abc-123
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: salas-backend
+        timestamp:
+          type: string
+          format: date-time
+
+    ApiError:
+      type: object
+      required: [code, message, correlationId]
+      properties:
+        code:
+          type: string
+          description: Código de erro da aplicação
+          enum:
+            - LOCALIDADE_REQUIRED
+            - TENANT_NOT_FOUND
+            - TENANT_REQUIRED
+            - VALIDATION_ERROR
+            - INVALID_RANGE
+            - INVALID_ROOM_EMAIL
+            - EVENT_ID_REQUIRED
+            - ROOM_CONFLICT
+            - REQUESTER_CONFLICT
+            - PARTICIPANT_CONFLICT
+            - BOOKING_NOT_FOUND
+            - ALREADY_CHECKED_IN
+            - BOOKING_FAILED
+            - INVALID_TOKEN
+            - FORBIDDEN_RESOURCE
+            - ADMIN_UNAUTHORIZED
+            - ADMIN_NOT_CONFIGURED
+            - LOGO_REQUIRED
+            - TAB_NOT_FOUND
+            - INTERNAL_ERROR
+        message:
+          type: string
+        details:
+          nullable: true
+        correlationId:
+          type: string
+
+    Room:
+      type: object
+      required: [name, email, capacity]
+      properties:
+        name:
+          type: string
+          example: Sala A
+        email:
+          type: string
+          format: email
+          example: sala-a@wtorre.com.br
+        capacity:
+          type: integer
+          nullable: true
+          example: 10
+
+    ScheduleItem:
+      type: object
+      required: [start, end, status]
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        status:
+          type: string
+          example: busy
+        subject:
+          type: string
+
+    RoomSchedule:
+      type: object
+      required: [roomEmail, isAvailable, scheduleItems]
+      properties:
+        roomEmail:
+          type: string
+          format: email
+        isAvailable:
+          type: boolean
+        availabilityView:
+          type: string
+          description: String de disponibilidade do Graph (ex. "00021110")
+        scheduleItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleItem"
+
+    Booking:
+      type: object
+      required: [eventId, roomEmail, roomName, title, start, end]
+      properties:
+        eventId:
+          type: string
+        roomEmail:
+          type: string
+          format: email
+        roomName:
+          type: string
+        title:
+          type: string
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        organizer:
+          type: string
+        requiresCheckIn:
+          type: boolean
+        checkedIn:
+          type: boolean
+        source:
+          type: string
+          enum: [calendar, schedule]
+
+    DirectoryUser:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    AvailabilityConflict:
+      type: object
+      required: [start, end, status]
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        status:
+          type: string
+        subject:
+          type: string
+
+    AvailabilityEntity:
+      type: object
+      required: [email, isAvailable, conflicts]
+      properties:
+        email:
+          type: string
+          format: email
+        isAvailable:
+          type: boolean
+        availabilityStatus:
+          type: string
+          enum: [available, busy, unknown, not_validated_contact]
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailabilityConflict"
+
+    AvailabilityPreview:
+      type: object
+      required: [start, end, room, participants]
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        room:
+          $ref: "#/components/schemas/AvailabilityEntity"
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailabilityEntity"
+
+    RoomKioskSettings:
+      type: object
+      required: [checkInModeEnabled]
+      properties:
+        checkInModeEnabled:
+          type: boolean
+        checkInGraceMinutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+
+    UiTabConfig:
+      type: object
+      required: [id, label, domains, logoKey]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        domains:
+          type: array
+          items:
+            type: string
+        logoKey:
+          type: string
+        logoFile:
+          type: string
+          nullable: true
+
+    UiConfig:
+      type: object
+      required: [tabs, domainToApiLocalidade, roomTabOverrides, roomOrderByTab]
+      properties:
+        tabs:
+          type: array
+          items:
+            $ref: "#/components/schemas/UiTabConfig"
+        domainToApiLocalidade:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            wtorre.com.br: WTorre
+            allianzparque.com.br: Allianz
+        roomTabOverrides:
+          type: object
+          additionalProperties:
+            type: string
+        roomOrderByTab:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    AdminRoomView:
+      type: object
+      required: [name, email, apiLocalidade, tabId, tabSource]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        apiLocalidade:
+          type: string
+        tabId:
+          type: string
+          nullable: true
+        tabSource:
+          type: string
+          enum: [override, domain, unassigned]
+
+    RoomsResponse:
+      type: object
+      required: [localidade, rooms]
+      properties:
+        localidade:
+          type: string
+        rooms:
+          type: array
+          items:
+            $ref: "#/components/schemas/Room"
+
+    ScheduleRequest:
+      type: object
+      required: [rooms, start, end]
+      properties:
+        rooms:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: email
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+
+    ScheduleResponse:
+      type: object
+      required: [localidade, schedule]
+      properties:
+        localidade:
+          type: string
+        schedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomSchedule"
+
+    AvailabilityPreviewRequest:
+      type: object
+      required: [roomEmail, start, end]
+      properties:
+        roomEmail:
+          type: string
+          format: email
+        participants:
+          type: array
+          items:
+            type: string
+            format: email
+          default: []
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+
+    AvailabilityPreviewResponse:
+      type: object
+      required: [localidade, preview]
+      properties:
+        localidade:
+          type: string
+        preview:
+          $ref: "#/components/schemas/AvailabilityPreview"
+
+    BookRequest:
+      type: object
+      required: [roomEmail, title, start, end, requesterEmail]
+      properties:
+        roomEmail:
+          type: string
+          format: email
+        title:
+          type: string
+          minLength: 1
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        requesterEmail:
+          type: string
+          format: email
+        participants:
+          type: array
+          items:
+            type: string
+            format: email
+          default: []
+        allowRequesterConflict:
+          type: boolean
+          default: false
+        allowParticipantConflict:
+          type: boolean
+          default: false
+
+    BookResponse:
+      type: object
+      required: [localidade, eventId]
+      properties:
+        localidade:
+          type: string
+        eventId:
+          type: string
+
+    BookingsResponse:
+      type: object
+      required: [localidade, bookings]
+      properties:
+        localidade:
+          type: string
+        bookings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Booking"
+
+    DirectoryUsersResponse:
+      type: object
+      required: [localidade, users]
+      properties:
+        localidade:
+          type: string
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/DirectoryUser"
+
+    KioskSettingsResponse:
+      type: object
+      required: [localidade, roomEmail, checkInModeEnabled]
+      properties:
+        localidade:
+          type: string
+        roomEmail:
+          type: string
+          format: email
+        checkInModeEnabled:
+          type: boolean
+        checkInGraceMinutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+
+    UiConfigResponse:
+      type: object
+      required: [config]
+      properties:
+        config:
+          $ref: "#/components/schemas/UiConfig"
+
+    AdminRoomsResponse:
+      type: object
+      required: [rooms]
+      properties:
+        rooms:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRoomView"
